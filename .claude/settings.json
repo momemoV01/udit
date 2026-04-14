@@ -26,7 +26,10 @@
       "Bash(gh pr list:*)",
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
-      "Bash(gh release view:*)"
+      "Bash(gh release view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(git commit:*)",
+      "Bash(git tag:*)"
     ],
     "ask": [
       "Bash(udit editor play:*)",
@@ -34,17 +37,14 @@
       "Bash(udit exec:*)",
       "Bash(udit reserialize:*)",
       "Bash(udit menu:*)",
-      "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(git pull:*)",
-      "Bash(git tag:*)",
       "Bash(git merge:*)",
       "Bash(git rebase:*)",
       "Bash(gh repo create:*)",
       "Bash(gh pr create:*)",
       "Bash(gh issue create:*)",
-      "Bash(gh release create:*)",
-      "Bash(gh run watch:*)"
+      "Bash(gh release create:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",

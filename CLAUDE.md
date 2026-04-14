@@ -15,7 +15,10 @@ CLI tool to control Unity Editor from the command line. Agent-first fork of unit
 - `/unity-perf-check` — 프로파일러 활성화 → 시나리오 측정 → 상위 병목 리포트
 - `/udit-release` — udit 자체 버전 릴리스 절차 (verification → tag → CI → 바이너리)
 
-권한 정책은 `.claude/settings.json` 참고. Unity 에디터 플레이/정지, exec, reserialize, git push 등 영향 큰 명령은 `ask` 처리.
+권한 정책은 `.claude/settings.json` 참고.
+- **allow**: 읽기 전용 (status/list/console/log/diff/test/build) + 로컬-영향 쓰기 (`git commit`, `git tag`, `gh run watch`). 로컬에서 되돌리기 쉬운 연산은 매번 확인 안 함.
+- **ask**: 원격 영향 (`git push`/`pull`/`merge`/`rebase`, `gh repo/pr/issue/release create`) + Unity side-effect (`udit exec`, `reserialize`, `editor play/stop`, `menu`).
+- **deny**: 복구 어려운 파괴 연산 (`git push --force`/`-f`, `reset --hard`, `branch -D`, `clean -fd`, `rm -rf`, `gh repo/release delete`).
 
 ## Structure
 
