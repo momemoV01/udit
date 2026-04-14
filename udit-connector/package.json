@@ -1,0 +1,16 @@
+{
+  "name": "com.momemov01.udit-connector",
+  "version": "0.1.0",
+  "displayName": "udit Connector",
+  "description": "HTTP bridge for udit. Receives CLI commands from the udit binary and dispatches to registered [UditTool] handlers. Fork of unity-cli-connector by DevBookOfArray.",
+  "unity": "6000.0",
+  "author": {
+    "name": "momemo",
+    "url": "https://github.com/momemoV01"
+  },
+  "keywords": ["cli", "tools", "editor", "udit", "agent"],
+  "type": "library",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  }
+}

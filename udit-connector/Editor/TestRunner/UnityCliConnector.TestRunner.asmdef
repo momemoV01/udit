@@ -1,0 +1,23 @@
+{
+  "name": "UditConnector.TestRunner",
+  "rootNamespace": "UditConnector.TestRunner",
+  "references": [
+    "UditConnector.Editor",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.test-framework",
+      "expression": "1.0.0",
+      "define": "UNITY_TEST_FRAMEWORK"
+    }
+  ],
+  "noEngineReferences": false
+}
