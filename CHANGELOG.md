@@ -5,18 +5,20 @@ All notable changes to **udit** are documented here. This project follows [Seman
 ## [Unreleased]
 
 ### Changed
-- **CI: bump Release workflow actions one major** to drop Node.js 20
-  deprecation warnings (Node 20 will be removed from GitHub runners on
-  2026-09-16). `release.yml` upgrades:
+- **CI: drop ALL Node 20 actions in Release workflow** so the next tag push
+  (v0.3.0+) keeps building after GitHub removes Node 20 from runners on
+  2026-09-16. Verified each action's `using:` field instead of trusting the
+  deprecation warning text (which only mentioned three of the five actions).
+  Final `release.yml` versions, all confirmed `using: node24`:
   - `actions/checkout` v4 → v5
   - `actions/setup-go` v5 → v6
-  - `actions/upload-artifact` v4 → v5
-  - `actions/download-artifact` v4 → v5
-  - `softprops/action-gh-release` stays at v2 (not affected by the Node
-    deprecation; v3 is a larger jump and out of scope here).
-  `ci.yml` was already on v5/v6 so no change there. New action versions
-  take effect on the next tag push (v0.3.0); the v0.2.0 release artifacts
-  are unaffected and remain valid.
+  - `actions/upload-artifact` v4 → v6 (v5 was still node20)
+  - `actions/download-artifact` v4 → v7 (v5 and v6 were both node20)
+  - `softprops/action-gh-release` v2 → v3 (v2 was node20; v3 release notes
+    confirm "runtime move only — no input/output changes")
+  `ci.yml` was already on v5/v6 plus `golangci-lint-action@v9` (node24);
+  no change there. v0.2.0 release artifacts (built with the old versions)
+  remain valid.
 
 ## [0.2.0] - 2026-04-14
 
