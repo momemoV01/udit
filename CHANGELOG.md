@@ -4,6 +4,26 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+### Changed
+- **CI: bump Release workflow actions one major** to drop Node.js 20
+  deprecation warnings (Node 20 will be removed from GitHub runners on
+  2026-09-16). `release.yml` upgrades:
+  - `actions/checkout` v4 → v5
+  - `actions/setup-go` v5 → v6
+  - `actions/upload-artifact` v4 → v5
+  - `actions/download-artifact` v4 → v5
+  - `softprops/action-gh-release` stays at v2 (not affected by the Node
+    deprecation; v3 is a larger jump and out of scope here).
+  `ci.yml` was already on v5/v6 so no change there. New action versions
+  take effect on the next tag push (v0.3.0); the v0.2.0 release artifacts
+  are unaffected and remain valid.
+
+## [0.2.0] - 2026-04-14
+
+Foundation release — first functional iteration after the v0.1.0
+rebranding baseline. See [docs/ROADMAP.md](./docs/ROADMAP.md) > Phase 1
+for the full plan.
+
 ### Fixed
 - **ExecuteCsharp** now kills the `csc` process when compilation exceeds 30s,
   preventing orphan processes from accumulating across long sessions.
@@ -89,6 +109,13 @@ All notable changes to **udit** are documented here. This project follows [Seman
   replacing the now-deprecated `FindFirstObjectByType<Camera>()` (CS0618).
   This is a pure "any camera" fallback when `Camera.main` is null, so the
   no-ordering semantics are correct.
+
+### Internal
+- Korean documentation policy: README.md / docs/ROADMAP.md / docs/ERROR_CODES.md
+  now have `.ko.md` siblings synced in lockstep. Policy recorded in CLAUDE.md.
+- CLAUDE.md adds a "Windows Store Claude Desktop sandbox" section after
+  losing two hours to MSIX file-system virtualization redirecting
+  `%LOCALAPPDATA%\udit\` writes into the Claude package container.
 
 ## [0.1.0] - 2026-04-14
 
