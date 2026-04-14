@@ -36,6 +36,14 @@ func Execute() error {
 		os.Exit(1)
 	}
 
+	// Load .udit.yaml (walk up from cwd). Apply only fields that the user
+	// did NOT set on the CLI, so explicit flags always win.
+	if cwd, err := os.Getwd(); err == nil {
+		if cfg, _ := LoadConfig(cwd); cfg != nil {
+			applyConfig(cfg)
+		}
+	}
+
 	if len(cmdArgs) == 0 {
 		printHelp()
 		return nil
@@ -111,6 +119,10 @@ func Execute() error {
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
 		if err == nil {
+			// Merge config-level default usings with whatever the call already
+			// provided. CLI --usings (parsed by buildParams above) wins for
+			// duplicates because it lands on top.
+			params = mergeExecUsings(params, loadedConfig)
 			resp, err = send("exec", params)
 		}
 	default:
@@ -135,6 +147,26 @@ func Execute() error {
 	}
 
 	return nil
+}
+
+// loadedConfig is set by Execute() once at startup so subcommand handlers
+// (e.g. exec usings injection) can see project-wide settings without being
+// passed an extra parameter through every call site.
+var loadedConfig *Config
+
+// applyConfig pushes config defaults into the global flag variables when the
+// CLI did not override them. CLI flags > config > built-in defaults.
+func applyConfig(cfg *Config) {
+	loadedConfig = cfg
+	if flagPort == 0 && cfg.DefaultPort != 0 {
+		flagPort = cfg.DefaultPort
+	}
+	// 120000 is the built-in default for --timeout. Treat it as "unset" so
+	// the config can replace it; an explicit `--timeout 120000` is
+	// indistinguishable but harmless (same value).
+	if flagTimeout == 120000 && cfg.DefaultTimeoutMs != 0 {
+		flagTimeout = cfg.DefaultTimeoutMs
+	}
 }
 
 // sendFn is the function signature for sending a command to Unity.

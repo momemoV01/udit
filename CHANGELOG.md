@@ -15,6 +15,21 @@ All notable changes to **udit** are documented here. This project follows [Seman
   or crashing mid-reload. `list` (read-only) remains allowed.
 
 ### Added
+- **`.udit.yaml` config file** (Phase 1.4). Walks from cwd upward (stopping
+  at `$HOME` exclusive, then filesystem root) and applies project-wide
+  defaults. CLI flags always win over config; config wins over built-in
+  defaults. Supported keys today:
+  ```yaml
+  default_port: 8590           # used unless --port is set
+  default_timeout_ms: 120000   # used unless --timeout is set
+  exec:
+    usings:                    # prepended to every `udit exec --usings`,
+      - Unity.Entities         # de-duplicated against the CLI list
+      - MyGame.Core
+  ```
+  Invalid YAML emits a warning to stderr and falls back to defaults — never
+  blocks the command. 6 unit tests cover discovery, walk, home-stop,
+  parse-failure, and exec-usings merge semantics.
 - **Global `--json` flag** (Phase 1.2). When set, every command emits a
   uniform machine-readable envelope to stdout (success) or stderr (failure):
   ```json
