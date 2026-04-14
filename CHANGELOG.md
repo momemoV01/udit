@@ -21,6 +21,10 @@ All notable changes to **udit** are documented here. This project follows [Seman
   values stay strings regardless of content; switches still produce bool true.
   All existing tests pass; new regression tests cover the literal `"true"` /
   `"false"` string cases and switch-flag behavior.
+- **EditorScreenshot** uses `FindAnyObjectByType<Camera>()` on Unity 2023.1+,
+  replacing the now-deprecated `FindFirstObjectByType<Camera>()` (CS0618).
+  This is a pure "any camera" fallback when `Camera.main` is null, so the
+  no-ordering semantics are correct.
 
 ## [0.1.0] - 2026-04-14
 

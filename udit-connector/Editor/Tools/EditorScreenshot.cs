@@ -101,7 +101,10 @@ namespace UditConnector.Tools
             if (!camera)
             {
 #if UNITY_2023_1_OR_NEWER
-                camera = UnityEngine.Object.FindFirstObjectByType<Camera>();
+                // Order doesn't matter here — Camera.main is preferred and this is just a
+                // "any camera" fallback. FindAnyObjectByType replaces the now-deprecated
+                // FindFirstObjectByType on Unity 6000+ (CS0618).
+                camera = UnityEngine.Object.FindAnyObjectByType<Camera>();
 #else
                 camera = UnityEngine.Object.FindObjectOfType<Camera>();
 #endif
