@@ -42,9 +42,10 @@ namespace UditConnector.Tools
             var outputPath = ResolveOutputPath(p.Get("output_path"));
 
             if (width <= 0 || height <= 0)
-                return new ErrorResponse($"Width/height must be positive (got {width}x{height}).");
+                return new ErrorResponse(ErrorCodes.InvalidParams,
+                    $"Width/height must be positive (got {width}x{height}).");
             if (width > MaxDimension || height > MaxDimension)
-                return new ErrorResponse(
+                return new ErrorResponse(ErrorCodes.InvalidParams,
                     $"Width/height exceeds safety cap of {MaxDimension}px (got {width}x{height}). " +
                     "Use smaller dimensions or take multiple screenshots.");
 
@@ -61,7 +62,8 @@ namespace UditConnector.Tools
                     case "game":
                         return CaptureGameView(width, height, outputPath);
                     default:
-                        return new ErrorResponse($"Unknown view '{view}'. Valid: scene, game.");
+                        return new ErrorResponse(ErrorCodes.InvalidParams,
+                            $"Unknown view '{view}'. Valid: scene, game.");
                 }
             }
             catch (Exception e)

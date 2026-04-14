@@ -14,6 +14,18 @@ All notable changes to **udit** are documented here. This project follows [Seman
   asset-importing, returning an actionable retry message instead of hanging
   or crashing mid-reload. `list` (read-only) remains allowed.
 
+### Added
+- **Error code registry** (Phase 1.3). `ErrorResponse` now carries an optional
+  `error_code` field (serialized as `error_code`, omitted when null) so agents
+  can branch on a stable identifier instead of fragile message-text matching.
+  Codes registered: `UCI-001` NoUnityRunning, `UCI-002` ConnectionRefused,
+  `UCI-003` CommandTimeout, `UCI-010` UnknownCommand, `UCI-011` InvalidParams,
+  `UCI-020` UnityCompiling, `UCI-021` UnityUpdating, `UCI-030` ExecCompileError,
+  `UCI-031` ExecRuntimeError, `UCI-040` AssetNotFound (reserved for Phase 2),
+  `UCI-041` SceneNotFound (reserved for Phase 2), `UCI-999` Unknown fallback.
+  CommandRouter, HttpServer, ExecuteCsharp, EditorScreenshot now emit codes
+  on their error paths.
+
 ### Changed
 - **buildParams (Go CLI)** distinguishes "switch" flags (`--wait`) from value
   flags (`--key value`). Previously `--filter true` was wrongly coerced to

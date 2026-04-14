@@ -51,7 +51,7 @@ namespace UditConnector.Tools
             var code = p.Get("code")
                 ?? (p.GetRaw("args") as JArray)?[0]?.ToString();
             if (string.IsNullOrEmpty(code))
-                return new ErrorResponse("'code' required");
+                return new ErrorResponse(ErrorCodes.InvalidParams, "'code' required");
 
             var usingsToken = p.GetRaw("usings");
             var extraUsings = new List<string>();
@@ -171,13 +171,13 @@ namespace UditConnector.Tools
                         // Compiler hung — kill it so we don't accumulate
                         // orphan csc.exe processes across long sessions.
                         try { proc.Kill(); } catch { /* may already exit */ }
-                        return new ErrorResponse("Compile timeout: csc did not finish within 30s.");
+                        return new ErrorResponse(ErrorCodes.ExecCompileError, "Compile timeout: csc did not finish within 30s.");
                     }
 
                     if (proc.ExitCode != 0)
                     {
                         var output = string.IsNullOrEmpty(stderr) ? stdout : stderr;
-                        return new ErrorResponse($"Compile error:\n{FormatErrors(output)}");
+                        return new ErrorResponse(ErrorCodes.ExecCompileError, $"Compile error:\n{FormatErrors(output)}");
                     }
                 }
 
@@ -195,7 +195,7 @@ namespace UditConnector.Tools
                 catch (TargetInvocationException tie)
                 {
                     var inner = tie.InnerException ?? tie;
-                    return new ErrorResponse($"Runtime error: {inner.GetType().Name}: {inner.Message}");
+                    return new ErrorResponse(ErrorCodes.ExecRuntimeError, $"Runtime error: {inner.GetType().Name}: {inner.Message}");
                 }
                 return new SuccessResponse("OK", Serialize(result, 0));
             }

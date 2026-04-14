@@ -43,9 +43,9 @@ namespace UditConnector
             if (!s_SafeWhileBusy.Contains(command))
             {
                 if (EditorApplication.isCompiling)
-                    return new ErrorResponse("Unity is compiling — retry shortly.");
+                    return new ErrorResponse(ErrorCodes.UnityCompiling, "Unity is compiling — retry shortly.");
                 if (EditorApplication.isUpdating)
-                    return new ErrorResponse("Unity is updating (asset import in progress) — retry shortly.");
+                    return new ErrorResponse(ErrorCodes.UnityUpdating, "Unity is updating (asset import in progress) — retry shortly.");
             }
 
             if (command == "list")
@@ -53,7 +53,7 @@ namespace UditConnector
 
             var handler = ToolDiscovery.FindHandler(command);
             if (handler == null)
-                return new ErrorResponse($"Unknown command: {command}");
+                return new ErrorResponse(ErrorCodes.UnknownCommand, $"Unknown command: {command}");
 
             try
             {
@@ -74,7 +74,7 @@ namespace UditConnector
             {
                 var inner = ex.InnerException ?? ex;
                 Debug.LogException(inner);
-                return new ErrorResponse($"{command} failed: {inner.Message}");
+                return new ErrorResponse(ErrorCodes.Unknown, $"{command} failed: {inner.Message}");
             }
         }
     }

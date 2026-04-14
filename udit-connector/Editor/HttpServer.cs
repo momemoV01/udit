@@ -188,7 +188,8 @@ namespace UditConnector
             {
                 if (request.HttpMethod != "POST" || request.Url.AbsolutePath != "/command")
                 {
-                    result = new ErrorResponse($"Expected POST /command, got {request.HttpMethod} {request.Url.AbsolutePath}");
+                    result = new ErrorResponse(ErrorCodes.InvalidParams,
+                        $"Expected POST /command, got {request.HttpMethod} {request.Url.AbsolutePath}");
                     response.StatusCode = 400;
                 }
                 else
@@ -202,7 +203,7 @@ namespace UditConnector
 
                     if (string.IsNullOrEmpty(command))
                     {
-                        result = new ErrorResponse("Missing 'command' field");
+                        result = new ErrorResponse(ErrorCodes.InvalidParams, "Missing 'command' field");
                         response.StatusCode = 400;
                     }
                     else
@@ -221,7 +222,7 @@ namespace UditConnector
             }
             catch (Exception ex)
             {
-                result = new ErrorResponse($"Request error: {ex.Message}");
+                result = new ErrorResponse(ErrorCodes.Unknown, $"Request error: {ex.Message}");
                 response.StatusCode = 500;
             }
 
