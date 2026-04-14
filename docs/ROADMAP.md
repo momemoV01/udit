@@ -3,7 +3,7 @@
 [English](ROADMAP.md) | [한국어](ROADMAP.ko.md)
 
 > Living plan. 버전/우선순위는 실사용 피드백에 따라 조정됨.
-> Last updated: 2026-04-15
+> Last updated: 2026-04-15 (v0.3.1 release)
 
 ## Vision
 
@@ -35,13 +35,13 @@
 | 0 | `v0.1.0` | Initial Fork | ✅ **Done** | unity-cli 리브랜드 기반선 |
 | 1 | `v0.2.0` | **Foundation** | ✅ **Done** | 버그 + JSON + 설정 파일 |
 | 2a | `v0.3.0` | **Observe — Scene & GO** | ✅ **Done** | Stable ID + `scene` + `go` |
-| 2b | `v0.3.x` | Observe — Asset & Component | 📋 Planned (다음) | `asset` + `component` |
-| 3 | `v0.4.0` | **Mutate** | 📋 Planned | GO/컴포넌트/prefab 쓰기 |
+| 2b | `v0.3.1` | **Observe — Component & Asset** | ✅ **Done** | `component` + `asset` |
+| 3 | `v0.4.0` | **Mutate** | 📋 Planned (다음) | GO/컴포넌트/prefab 쓰기 |
 | 4 | `v0.5.0` | **Automate** | 📋 Planned | 빌드/패키지 관리 |
 | 5 | `v0.6.0` | **Stream** | 📋 Planned | watch + log tail |
 | 6 | `v1.0.0` | **Polish & Freeze** | 📋 Planned | 테스트/문서/API 동결 |
 
-Phase 2는 원래 단일 릴리스였으나 실제 작업하며 **scene + go** 블록이 에이전트 체감 가치 라인(`exec` 의존도 급감)을 이미 넘는 것을 확인해 2a/2b로 분할. 2a만으로 v0.3.0을 출시하고 asset/component는 v0.3.x에서 증분.
+Phase 2는 원래 단일 릴리스였으나 실제 작업하며 **scene + go** 블록이 에이전트 체감 가치 라인(`exec` 의존도 급감)을 이미 넘는 것을 확인해 2a/2b로 분할. 2a를 v0.3.0, 2b를 v0.3.1로 짧게 끊어 출시 — 두 릴리스 모두 같은 4월 15일에 일어났지만 분리한 이유는 (i) v0.3.0 출시 직후 Public 전환 문제 발견과 분리, (ii) v0.3.1에서 추가된 commands가 의미 있는 단위로 묶여서.
 
 ---
 
@@ -229,31 +229,74 @@ udit-connector/Editor/Tools/
 
 ---
 
-## Phase 2b: v0.3.x — Observe (Asset & Component)
+## Phase 2b: v0.3.1 — Observe (Component & Asset)
 
-**목표**: Observe 완성. v0.3.0 사용 피드백에 따라 스펙 세밀화.
+**완료일**: 2026-04-15
 
-### 2.3 `asset` — 에셋 쿼리
+**목표**: Observe 완성. `go inspect` / `scene tree`가 덤프 위주라면 2b는 **field-level zoom-in (`component get`)** 과 **프로젝트 자산 그래프 (`asset *`)** 를 추가.
+
+### 2.4 `component` — 컴포넌트 쿼리 ✅
 
 ```bash
-udit asset find --type Prefab [--name "*Enemy*"] [--label boss]
-udit asset inspect Assets/Prefabs/Player.prefab
-udit asset dependencies Assets/Scenes/Main.unity
-udit asset references Assets/Prefabs/Player.prefab
-udit asset guid Assets/Prefabs/Player.prefab
+udit component list go:a1b2c3d4                  # 붙은 컴포넌트 요약
+udit component get go:a1b2c3d4 Transform         # 한 컴포넌트 전체 덤프
+udit component get go:a1b2c3d4 Transform position           # 단일 필드
+udit component get go:a1b2c3d4 Transform position.z         # 점표기 중첩
+udit component get go:a1b2c3d4 BoxCollider --index 1        # 같은 타입 여러 개
+udit component schema Camera                     # 타입 스키마 (live 인스턴스 필요)
+```
+
+`SerializedInspect`가 이미 `go inspect`에서 쓰이는 컨버터라 `component get`은 그 결과를 JObject로 받아 dotted path traversal 하는 얇은 래퍼. 결과적으로 같은 vocabulary가 chain 전체에 일관 적용 — `go inspect` 응답에 보이는 필드 이름을 그대로 `component get`에 넘겨도 됨.
+
+`schema` v1은 **씬에 live 인스턴스가 있어야** 함 (`AddComponent`가 RequireComponent 체인 등 부작용 있어 spawn 회피). reflection-only fallback은 후속.
+
+새 에러 코드 **UCI-043 ComponentNotFound** — GO에 해당 타입 없음 / `--index` 범위 초과 / `schema` 인스턴스 없음 세 케이스 모두 이 코드. 메시지에 실제 붙은 타입 또는 실제 카운트 포함해서 에이전트가 자가 교정 가능.
+
+### 2.3 `asset` — 에셋 쿼리 ✅
+
+```bash
+udit asset find [--type Prefab] [--label boss] [--name "*Enemy*"] [--folder F]
+udit asset inspect Assets/Materials/Player.mat   # 타입별 details 블록
+udit asset dependencies Assets/Scenes/Main.unity [--recursive]
+udit asset references Assets/Prefabs/Enemy.prefab [--limit N]
+udit asset guid <path>
 udit asset path <guid>
 ```
 
-### 2.4 `component` — 컴포넌트 쿼리
+`inspect` 의 타입별 detail 핸들러: **Texture2D** (크기/포맷/필터/wrap/mip), **Material** (쉐이더 + ShaderUtil 기반 프로퍼티 enumeration), **AudioClip** (length/freq/channels/load), **Prefab root** (root_components/child_count), **ScriptableObject** (full SerializedInspect 덤프), **TextAsset** (length + 500자 preview + truncated). 다른 타입은 common header(`{path, guid, name, type, labels}`) + `details:null`.
 
-```bash
-udit component get go:a1b2c3d4 Transform
-udit component get go:a1b2c3d4 Transform position
-udit component list go:a1b2c3d4
-udit component schema Rigidbody      # 프로퍼티 + 타입 스키마
+`references`는 Unity가 역인덱스 없어 **전체 스캔** 필요. 응답에 `scan_ms` + `scanned_assets` 노출하므로 에이전트가 비용 인지 가능. `--limit` 기본 100, 최대 1000.
+
+**SerializedInspect.ObjectToJson** API 추가 — 기존 `ComponentToObject`는 Component만 받지만 ScriptableObject/Material 등 일반 `UnityEngine.Object` 덤프 필요. 내부 `WalkProperties(UnityEngine.Object)` 헬퍼로 둘 다 공유.
+
+**UCI-040 AssetNotFound** 활성화 (v0.3.0에서 reserved 였음). 모든 unknown path/GUID 케이스를 단일 코드로.
+
+### 구현 구조 (전체 Phase 2)
+
+```
+udit-connector/Editor/Tools/
+  ManageScene.cs          (manage_scene: list/active/open/save/reload/tree)
+  ManageGameObject.cs     (manage_game_object: find/inspect/path)
+  ManageComponent.cs      (manage_component: list/get/schema)
+  ManageAsset.cs          (manage_asset: find/inspect/dependencies/references/guid/path)
+  Common/
+    StableIdRegistry.cs   (GlobalObjectId → go:hash 매핑 + 역매핑)
+    SerializedInspect.cs  (Component/Object → JSON, Transform 특별 처리)
 ```
 
-`SerializedInspect` 유틸은 이미 `go inspect`에서 쓰이므로 `component get`은 같은 값을 field 단위로 zoom-in 하는 얇은 래퍼로 충분.
+### Phase 2b 성공 기준
+
+- [x] `component get`으로 임의 필드 dotted-path 조회
+- [x] `component schema`로 타입의 SerializedProperty 메타 (live 인스턴스 기반)
+- [x] `asset find` 모든 필터 조합 (type/label/name/folder + paginate)
+- [x] `asset dependencies` (direct + recursive)
+- [x] `asset references` 전체 스캔 + `scan_ms` 비용 노출
+- [x] `asset inspect` 6개 타입별 detail handler
+- [x] UCI-040 AssetNotFound + UCI-043 ComponentNotFound 활성화 + 양국어 문서
+
+**완료 commit 체인** (2026-04-15, v0.3.1):
+- `df2b7fa` feat(component): list/get/schema + UCI-043
+- `194ddde` feat(asset): find/inspect/dependencies/references/guid/path
 
 ---
 
@@ -630,6 +673,11 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | Phase 2 분할 (2a = scene+go / 2b = asset+component) | 원래 단일 v0.3.0으로 잡았으나, 2a만으로 에이전트 체감 가치 라인(exec 의존도 급감)을 이미 넘는 것을 실제 구현·검증 중 확인. 2a를 v0.3.0으로 즉시 출시하고 asset/component는 피드백 받으며 v0.3.x 증분으로 추가하는 게 유지보수 건강에도 맞음 |
 | 2026-04-15 | Dirty-scene 가드 (`--force` 요구) | `scene open`/`scene reload`가 dirty 씬에서 `EditorSceneManager.OpenScene`을 호출하면 Unity가 조용히 변경을 폐기함. 에이전트가 실수로 작업을 날리는 리스크. 기본 refuse + `--force`로 명시적 discard. Save 후 호출하거나 force로 명시 둘 중 선택하게 강제 |
 | 2026-04-15 | `SerializedInspect` 유틸에서 Transform만 특별 처리 | `SerializedObject`는 `m_LocalPosition` 등만 노출하지만 에이전트는 world 좌표도 필요. 컴포넌트 전체 reflection은 overkill — Transform만 `t.position`/`t.eulerAngles` 직접 읽어 반환. 나머지 컴포넌트는 visible SerializedProperty walk. Enum `{value, name}`, Color `{r,g,b,a}`, ObjectRef `{type, name, path, guid}`, 배열은 20 clip + `{count, elements, truncated}` |
+| 2026-04-15 | `component get` field path를 JObject traversal로 구현 | C# 쪽에 별도 path resolver를 두는 대신 SerializedInspect.ComponentToObject 결과를 JObject로 변환 후 점표기로 navigate. 장점: (1) 에이전트가 보는 필드 이름이 `go inspect`와 100% 일치 (단일 vocabulary), (2) 중첩 객체와 배열 인덱스를 같은 구문으로 (`m_Cameras.elements.0`), (3) Transform의 가상 필드(`position`, `local_position`)도 자동 지원 |
+| 2026-04-15 | `component schema`는 live 인스턴스 probe 방식 (v1) | `AddComponent` spawn 시 RequireComponent 체인 + 일부 컴포넌트의 internal flag로 인한 add 거부 등 부작용 큼. 임시 GO를 만들고 destroy해도 하이라키 변경 noise 발생. 차선책으로 씬에 이미 있는 인스턴스를 `FindAnyObjectByType`로 찾아 SerializedObject 메타만 추출. 인스턴스 없으면 명확한 UCI-043 메시지로 안내. reflection-only fallback은 후속 슬라이스 |
+| 2026-04-15 | `asset references`는 전체 스캔 + `scan_ms` 노출 | Unity는 reverse dependency 인덱스를 제공하지 않아 정직한 구현은 모든 에셋의 GetDependencies를 도는 O(n) scan. 이를 숨기지 않고 응답에 `scanned_assets` + `scan_ms` 필드를 포함시켜 에이전트가 비용을 인지하고 `--limit` 사용을 결정할 수 있게 함. 12k 에셋 프로젝트에서 ~1.8초 측정 — 큰 프로젝트에서는 캐싱 또는 인덱싱 추가 검토 |
+| 2026-04-15 | `asset inspect`에 타입별 detail handler 둠 (6 types) | SerializedObject 한 가지로 모두 처리하면 Material의 ShaderUtil 메타 / Texture2D의 format/mip / AudioClip의 freq 등 타입 고유 정보를 놓침. switch에 핸들러 6개(Texture2D/Material/AudioClip/Prefab/ScriptableObject/TextAsset) 두고 그 외는 details:null + common header. 새 타입 추가 시 핸들러 한 개만 추가 |
+| 2026-04-15 | Phase 2 분할 결정 후 v0.3.0 + v0.3.1을 같은 날 출시 | 원래 2a 출시 후 사용 피드백 받고 2b 진행 계획이었으나, 2a 직후 dog-food 단계에서 (i) Public 전환 미결로 `udit update` 못 쓰는 마찰 발견, (ii) component/asset도 SerializedInspect 재활용으로 빠르게 마무리 가능함 확인. Day-1 patch로 2b 묶어 출시 |
 
 ---
 
@@ -655,6 +703,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] v0.2.1 patch: sentinel markers + Node 20 actions 완전 제거 + 실전 검증
 - [x] Phase 2a 착수 — StableIdRegistry + scene + go (2026-04-14 ~ 2026-04-15)
 - [x] **v0.3.0 태그 push + Release 검증** (2026-04-15)
-- [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 위해)
-- [ ] **Phase 2b** — `asset find/inspect/dependencies/references/guid/path` + `component get/list/schema`
-- [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find` 응답 시간 실측)
+- [x] Phase 2b 착수 — component + asset (2026-04-15)
+- [x] **v0.3.1 태그 push + Release 검증** (2026-04-15)
+- [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
+- [ ] **Phase 3 (Mutate) 착수** — `go create/destroy/move/rename/setactive`, `component add/remove/set/copy`, `prefab instantiate/unpack/apply`, `asset create/move/delete/label`, dry-run, transactions
+- [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)

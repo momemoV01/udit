@@ -4,6 +4,147 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-15
+
+Same-day patch closing Phase 2b. Where v0.3.0 covered scene + go, this
+release adds **component** (field-level zoom-in on individual properties)
+and **asset** (project asset graph: find / inspect / dependencies /
+references / guid / path). The agent's read path is now end-to-end
+covered without `exec` for every Observe scenario in the ROADMAP.
+
+Connector bumped to `0.3.0` to reflect the two new C# tools and the
+`SerializedInspect.ObjectToJson` public addition. CLI and Connector
+versions remain independent.
+
+### Added
+
+**`component` namespace (3 subcommands).** Reuses the
+`SerializedInspect` converter from v0.3.0, so the field names returned
+by `component get` are exactly the ones that show up under each
+`go inspect` component entry — agents learn one vocabulary and
+re-apply it.
+
+- `component list <go:ID>` — `{ index, type, full_type, enabled }` for
+  every component on the GameObject. Lighter than `go inspect` when you
+  only need attached types.
+- `component get <go:ID> <Type> [field]` — Without a field, dumps every
+  visible property. With a dotted field path (e.g. `position`,
+  `position.z`, `m_Cameras.elements.0`), navigates the JObject returned
+  by SerializedInspect and returns the leaf value. The CLI always
+  passes the `field` string through verbatim, so the same vocabulary
+  works for nested objects, struct fields, and array indices.
+- `component get <go:ID> <Type> --index N` — Pick the Nth attached
+  component when multiple of the same type exist (e.g. two BoxColliders).
+- `component schema <Type>` — Serialized-property schema for a type:
+  `{ name, display_name, property_type, is_array, has_children }`.
+  v1 probes an *existing* live instance in the loaded scenes rather than
+  spawning one (AddComponent has side effects: RequireComponent chains,
+  internal flags). A reflection-only fallback for the "no instance
+  anywhere" case is a later slice.
+
+Type-name resolution is case-insensitive. Unqualified names prefer
+`UnityEngine.*` when multiple assemblies ship a Component with the same
+simple name; pass the full namespace (`MyGame.Camera`) to disambiguate.
+
+**`asset` namespace (6 subcommands).** Project asset graph queries.
+All paths are project-relative (`Assets/...` or `Packages/...`); GUIDs
+are Unity's 32-char hex strings.
+
+- `asset find` — AssetDatabase query with combinable filters:
+  `--type X` maps to Unity's `t:` syntax, `--label X` maps to `l:`,
+  `--name <glob>` is a post-filter (since AssetDatabase's free-text
+  term is substring not wildcard), `--folder F1,F2,...` scopes the
+  search, `--limit N --offset M` paginate. Results sorted by path.
+- `asset inspect <path>` — Common header `{ path, guid, name, type,
+  full_type, labels }` plus a type-specific `details` block:
+  - **Texture2D** — width, height, format, filter/wrap mode, mip count,
+    is_readable.
+  - **Material** — shader name, render queue, shader keywords, plus a
+    full property list (each value typed via ShaderUtil:
+    Color/Float/Vector/Texture/Int).
+  - **AudioClip** — length seconds, frequency, channels, samples,
+    load type, preload flag.
+  - **GameObject (Prefab root)** — tag, layer, root_components,
+    child_count.
+  - **ScriptableObject** — full serialized dump via
+    `SerializedInspect.ObjectToJson`.
+  - **TextAsset** — length, 500-char preview, truncated flag.
+  - Other types return `details: null` with the common header so
+    agents can still key off the type.
+- `asset dependencies <path> [--recursive]` — Direct deps by default
+  (matches Unity's Inspector behavior). `--recursive` walks the full
+  transitive tree.
+- `asset references <path>` — Reverse dependency scan. Unity has no
+  index for this, so the implementation walks every asset in the
+  project and checks whether `<path>` appears in its dependencies.
+  Response includes `scan_ms` and `scanned_assets` so agents see the
+  cost (~1.8s on a 12k-asset Unity 6 URP project in our verification).
+  `--limit N --offset M` paginate; default limit 100, max 1000.
+- `asset guid <path>` — `AssetDatabase.AssetPathToGUID` lookup.
+- `asset path <guid>` — `AssetDatabase.GUIDToAssetPath` lookup.
+
+**`SerializedInspect.ObjectToJson(UnityEngine.Object)`** — Public API
+addition so non-Component assets (ScriptableObject, Material, anything
+backed by a SerializedObject) can round-trip through the same
+`{ type, properties }` shape that `ComponentToObject` returns. Internal
+`WalkProperties` helper now shared between both paths; the
+Component-specific entry point still special-cases Transform and
+`Behaviour.enabled`.
+
+**Error code `UCI-043 ComponentNotFound`.** Single code for three
+structurally similar cases on `component get` / `component schema`:
+- Type not attached to the GameObject.
+- `--index N` exceeds the number of attached components of that type.
+- `schema` for a type with no live instance in any loaded scene (or a
+  type that does not exist in any loaded assembly).
+
+Each variant's error message names the actual remediation data —
+attached types, real instance count, or whether the type itself was
+not found — so the agent can self-correct without scraping.
+
+### Changed
+
+- **`UCI-040 AssetNotFound` is now actively emitted** by the new
+  `asset` tools. It was reserved in v0.3.0 for this exact use. Single
+  code covers `inspect`/`dependencies`/`references`/`guid` with a
+  bad path and `path` with an unknown GUID; messages all instruct
+  the agent to verify via `asset find`.
+- **Connector bumped to `0.3.0`** (`udit-connector/package.json`).
+  Two new C# tools (`ManageComponent`, `ManageAsset`) plus
+  `SerializedInspect.ObjectToJson` are a substantive C# delta over
+  v0.2.0.
+- **Shell completion** (bash/zsh/powershell/fish) learns `component`
+  with three subcommands and `asset` with six.
+- **Help text** in `udit --help` gains **Components** and **Assets**
+  sections; `udit component --help` and `udit asset --help` cover
+  every subcommand, flag, type-name resolution rule, and failure mode.
+- **README.md / README.ko.md** gain Components and Assets sections,
+  kept in lockstep per the bilingual policy.
+- **docs/ERROR_CODES.md / .ko.md** — UCI-043 added with example
+  payloads, UCI-040 entry rewritten now that it is emitted in
+  practice, agent decision flow diagram updated.
+
+### Design notes
+
+- **`component get` field paths traverse a JObject** instead of using
+  a separate path resolver on the C# side. The full SerializedInspect
+  result is converted to JObject and walked by the dotted segments.
+  This keeps the field-name vocabulary identical to `go inspect`,
+  handles nested structs and array indices uniformly, and means
+  Transform's virtual fields (`position`, `local_position`) work
+  without a special case in the resolver.
+- **`asset references` honestly exposes its cost.** Returning
+  `scan_ms` and `scanned_assets` in the response — instead of a flag
+  buried in docs — pushes agents to set `--limit` on large projects
+  rather than discovering the cost through timeouts.
+- **`asset inspect` uses per-type detail handlers.** A single
+  SerializedObject walk would bury Material's ShaderUtil metadata,
+  Texture2D's format/mip info, and AudioClip's sample rate. Six
+  handlers (Texture2D, Material, AudioClip, GameObject-as-prefab,
+  ScriptableObject, TextAsset) keep type-specific information
+  prominent without expanding the surface for callers who only need
+  the common header.
+
 ## [0.3.0] - 2026-04-15
 
 First release of Phase 2 (**Observe**). Agents can now query scenes and
