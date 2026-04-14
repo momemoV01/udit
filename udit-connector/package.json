@@ -1,6 +1,6 @@
 {
   "name": "com.momemov01.udit-connector",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "displayName": "udit Connector",
   "description": "HTTP bridge for udit. Receives CLI commands from the udit binary and dispatches to registered [UditTool] handlers. Fork of unity-cli-connector by DevBookOfArray.",
   "unity": "6000.0",

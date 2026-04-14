@@ -4,6 +4,101 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-04-15
+
+Closes Phase 3 (Mutate). Third same-day patch in the v0.4.x line,
+adding transactions that let agents group multi-step scene edits into
+a single Unity Undo entry. With this release, the ROADMAP for Mutate
+is fully shipped — agents can observe, mutate, and batch-undo scene
+changes end-to-end without ever dropping into `exec`.
+
+Connector bumped to `0.6.0` — one new C# tool (`ManageTransaction`)
+added to the existing connector. Small in surface area, large in the
+reach it gives the other mutation tools.
+
+### Added
+
+**`tx` namespace (4 subcommands) — new `ManageTransaction` tool.**
+
+```bash
+udit tx begin [--name "Spawn boss setup"]
+udit go create --name Boss
+udit component add go:abcd1234 --type Rigidbody
+udit component set go:abcd1234 Rigidbody m_Mass 5.5
+udit tx commit                       # single Ctrl+Z now reverses all 3
+
+udit tx begin --name "Try a layout"
+udit go create --name Candidate
+udit go move go:abcd1234 --parent go:5678abcd
+udit tx rollback                     # every change since begin is unwound
+
+udit tx status                       # { active, group, name, duration_ms }
+```
+
+- `begin` captures the current Unity Undo group via
+  `Undo.IncrementCurrentGroup` + `Undo.GetCurrentGroup`. Optional
+  `--name` lands in the Edit → Undo menu after commit.
+- `commit` calls `Undo.CollapseUndoOperations(savedGroup)` — every
+  Undo sub-group created since begin gets merged into one. A single
+  Ctrl+Z in the Editor reverses the entire batch. `--name` at commit
+  overrides the begin-time label, handy when the final description
+  only crystallises after the work is done.
+- `rollback` calls `Undo.RevertAllDownToGroup(savedGroup)` and
+  replays the Undo stack back to the pre-begin state in place.
+- `status` reports whether a transaction is active and, if so, its
+  group / name / elapsed time.
+
+State cost is minimal — three static fields on the connector side
+(`group`, `name`, `started`). All real change state lives on Unity's
+own Undo stack.
+
+### Constraints (documented in help + README)
+
+- **One transaction per Unity instance.** The Undo stack is global,
+  so there's exactly one nesting at a time. `begin` during an active
+  tx returns `UCI-011` with the existing transaction's name and age.
+- **Domain reload wipes the handle.** Script recompiles tear down the
+  static state. Mid-transaction reloads leave partial mutations on
+  the Undo stack but drop the tx handle; `tx status` reports no
+  active, agent re-begins if they want to keep grouping.
+- **AssetDatabase operations don't participate.** `asset create/
+  move/delete/label` write straight to disk and can't be collapsed
+  into a scene-Undo group. They still execute inside a transaction,
+  just not reversibly via commit/rollback. This matches the
+  underlying Unity API rather than trying to paper over it.
+
+### Changed
+
+- **Connector bumped to `0.6.0`** (`udit-connector/package.json`).
+  New `ManageTransaction` tool only — existing tools are unchanged.
+- **Shell completion** (bash/zsh/powershell/fish) learns the new
+  top-level `tx` command and its four subcommands.
+- **Help text** gains dedicated `udit tx --help` describing the
+  begin/commit/rollback/status surface, the three constraints, and
+  both typical use cases (single-undo batch, mid-op rollback).
+- **README.md / README.ko.md** gain a "Transactions" subsection
+  after "Prefabs", kept in lockstep per the bilingual doc policy.
+
+### Design note
+
+**Why Unity-native instead of tracking command history.** An
+alternative design would be to have udit record every mutation
+executed since `begin` and replay them in reverse on `rollback`.
+That breaks three ways:
+1. Stateless HTTP: the connector would need to hold a growing
+   command log across requests.
+2. Asymmetry with Unity's own Undo: a user pressing Ctrl+Z in the
+   Editor would reverse operations individually, but `udit tx
+   rollback` would only reverse the ones udit tracked.
+3. Irreversible operations: `asset create/move/delete` can't be
+   exactly undone by issuing the inverse call, and managing partial
+   rollback gets complicated fast.
+
+Delegating to Unity's own Undo stack keeps udit's rollback semantics
+identical to what Ctrl+Z already gives users, at the cost of
+AssetDatabase operations not participating. That tradeoff is called
+out in the docs rather than hidden.
+
 ## [0.4.1] - 2026-04-15
 
 Same-day patch closing the Phase 3 middle block. v0.4.0 shipped

@@ -3,7 +3,7 @@
 [English](ROADMAP.md) | [한국어](ROADMAP.ko.md)
 
 > Living plan. 버전/우선순위는 실사용 피드백에 따라 조정됨.
-> Last updated: 2026-04-15 (v0.4.1 release)
+> Last updated: 2026-04-15 (v0.4.2 release — Phase 3 complete)
 
 ## Vision
 
@@ -38,8 +38,8 @@
 | 2b | `v0.3.1` | **Observe — Component & Asset** | ✅ **Done** | `component` + `asset` |
 | 3a | `v0.4.0` | **Mutate — GO & Component** | ✅ **Done** | `go create/destroy/move/rename/setactive` + `component add/remove/set/copy` + Undo + `--dry-run` |
 | 3b | `v0.4.1` | **Mutate — ObjectRef + Prefab + Asset** | ✅ **Done** | `component set` ObjectReference 쓰기, `prefab instantiate/unpack/apply/find-instances`, `asset create/move/delete/label` |
-| 3c | `v0.4.x` | Mutate — Transactions | 📋 Planned (다음) | `Undo.CollapseUndoOperations`로 복합 명령 단일 Undo group |
-| 4 | `v0.5.0` | **Automate** | 📋 Planned | 빌드/패키지 관리 |
+| 3c | `v0.4.2` | **Mutate — Transactions** | ✅ **Done** | `tx begin/commit/rollback/status` — `Undo.CollapseUndoOperations` / `RevertAllDownToGroup` |
+| 4 | `v0.5.0` | **Automate** | 📋 Planned (다음) | 빌드/패키지 관리 |
 | 5 | `v0.6.0` | **Stream** | 📋 Planned | watch + log tail |
 | 6 | `v1.0.0` | **Polish & Freeze** | 📋 Planned | 테스트/문서/API 동결 |
 
@@ -426,25 +426,40 @@ udit asset label <add|remove|list|set|clear> <path> [labels...]
 
 ---
 
-## Phase 3c: v0.4.x — Mutate (Transactions)
+## Phase 3c: v0.4.2 — Mutate (Transactions) ✅
 
-**목표**: 복합 변경의 원자성. 현재 각 mutation이 독립 Undo group이라 복합 변경 취소에 N번 Ctrl+Z 필요 — 트랜잭션 도입 시 1번.
+**완료일**: 2026-04-15
+
+**목표**: 복합 변경의 원자성. 각 mutation이 독립 Undo group이라 복합 변경 취소에 N번 Ctrl+Z 필요했던 문제 해결.
 
 ```bash
-udit tx begin
+udit tx begin [--name "..."]
 udit go create --name Boss
-udit component add go:... Rigidbody
-udit component set go:... Rigidbody m_Mass 5.5
-udit tx commit   # 또는 udit tx rollback
+udit component add go:X --type Rigidbody
+udit component set go:X Rigidbody m_Mass 5.5
+udit tx commit [--name "..."]         # 한 번의 Ctrl+Z로 3개 변경 전부 reverse
+udit tx rollback                      # 또는 begin 이후 전부 되감기
+udit tx status                        # 활성 tx 여부 확인
 ```
 
-구현: `Undo.CollapseUndoOperations(groupIndex)`로 `tx begin` 이후의 모든 udit 명령을 단일 Undo 엔트리로 묶음.
+**구현**: 새 `[UditTool]` 클래스 `ManageTransaction`. begin 시 `Undo.GetCurrentGroup()` 캡처 (static 필드), commit 시 `Undo.CollapseUndoOperations(savedGroup)` → 모든 sub-group이 하나로 합쳐짐. rollback 시 `Undo.RevertAllDownToGroup(savedGroup)`으로 Undo 스택을 pre-tx 상태로 되감음.
+
+**Unity-native 접근 덕분에 state가 극히 최소**: Connector 쪽은 `{group index, name, started timestamp}` 3개 필드만 static, 실제 변경 내역은 전부 Unity Undo 스택에.
+
+**제약**:
+- **인스턴스당 1개 tx만** — Unity Undo 스택이 전역이라 nesting 불가. 활성 tx 중 begin → UCI-011 + 기존 tx 이름/age.
+- **도메인 리로드가 핸들 폐기** — static 상태는 스크립트 재컴파일로 사라짐. 부분 mutation은 Undo 스택에 남음. `tx status`로 확인 후 re-begin.
+- **AssetDatabase 연산 미참여** — `asset create/move/delete/label`은 디스크에 즉시 쓰기라 씬 Undo 그룹에 못 묶임. 트랜잭션 내 실행은 되나 rollback으로 되돌릴 수 없음.
 
 ### Phase 3c 성공 기준
 
-- [ ] 트랜잭션 begin/commit/rollback 구현
-- [ ] 트랜잭션 rollback 시 상태 완벽 복구
-- [ ] 트랜잭션 내 mutation이 단일 Undo 엔트리로 합쳐짐
+- [x] 트랜잭션 begin/commit/rollback/status 구현
+- [x] 트랜잭션 rollback 시 상태 완벽 복구 (live-test: scene count 5 → 3 원상 복구)
+- [x] 트랜잭션 내 mutation이 단일 Undo 엔트리로 합쳐짐 (live-test: 3 mutation → 1 PerformUndo로 전부 reverse)
+- [x] Double-begin / 활성 없는 commit·rollback 방어 (UCI-011 + helpful message)
+
+**완료 commit** (2026-04-15, v0.4.2):
+- `10ae76c` feat(tx): add transactions (begin/commit/rollback/status)
 
 ---
 
@@ -767,6 +782,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | AssetDatabase 연산은 Unity Undo 없음 — 명시적 caveat + trash 기본 | `AssetDatabase.CreateAsset/MoveAsset/DeleteAsset/SetLabels`는 Undo에 참여 안 함 (Unity API의 본질). help + README에 명시. 안전장치: (i) 모든 mutation `--dry-run`, (ii) `delete` 기본 `MoveAssetToTrash` (OS 휴지통 복구), (iii) `delete --permanent --dry-run`은 full-project 스캔으로 `referenced_by: N` 보고 |
 | 2026-04-15 | `asset create --type Folder` sentinel 방식 | 폴더는 `AssetDatabase.CreateFolder(parent, child)`로 별도 API — signature 다름. 별도 명령 대신 `create` 안에서 `--type Folder`를 sentinel로. 장점: 하나의 create surface로 통일, 에이전트가 `--type X --path Y` 패턴 하나로 외우면 됨 |
 | 2026-04-15 | Phase 3 분할 세분화 (3a/3b/3c) — v0.4.0/v0.4.1 day-1 patch | transactions만 cross-cutting이라 묶기 불편해서 3b에 ObjectReference set + prefab + asset mutation을 담아 v0.4.1로 cut, transactions는 3c로 분리. Phase 2 때 v0.3.0 → v0.3.1 같은 날 릴리스 패턴 그대로 |
+| 2026-04-15 | 트랜잭션은 Unity-native API 3개로 (`IncrementCurrentGroup` + `CollapseUndoOperations` + `RevertAllDownToGroup`) | 대안은 udit이 "begin 이후 실행된 명령 목록"을 자체 추적하고 rollback 시 역순 재실행. 단점: (i) Stateless HTTP 원칙 위반 큼, (ii) 비가역적 API(asset create/move 등)는 역재실행 불가, (iii) Unity Undo와 별도 추적이라 Ctrl+Z와 udit rollback이 다르게 동작. Unity Undo를 신뢰하면 state가 `{group, name, started}` 3개, commit 후 Ctrl+Z 한 번 = udit rollback 1회 = 대칭, Unity가 지원 못 하는 건 udit도 안 함이 일관. AssetDatabase 미참여는 docs에 명시 |
+| 2026-04-15 | 트랜잭션 state는 static 필드 (도메인 리로드 시 자동 폐기) | 명시적 cleanup hook 없이 리로드 시 static wipe되는 Unity 특성 활용. 장점: 핸들이 stale 상태로 남지 않음. 단점: 부분 mutation이 Undo 스택에 남되 tx 핸들은 사라져 "묶기 미완성" 상태 — `tx status`가 no-active 반환하면 agent 인지 가능 |
 
 ---
 
@@ -798,7 +815,9 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] **v0.4.0 태그 push + Release 검증** (2026-04-15)
 - [x] Phase 3b 착수 — ObjectReference set + Prefab + Asset mutation (2026-04-15)
 - [x] **v0.4.1 태그 push + Release 검증** (2026-04-15)
+- [x] Phase 3c 착수 — Transactions (`tx begin/commit/rollback/status`) (2026-04-15)
+- [x] **v0.4.2 태그 push + Release 검증** (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
-- [ ] **Phase 3c** — Transactions (`udit tx begin/commit/rollback` via `Undo.CollapseUndoOperations`)
+- [ ] **Phase 4 (Automate) 착수** — `build player/targets/addressables`, `package add/remove/list`, `test run --output junit.xml`, `project info/validate/preflight`
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)
