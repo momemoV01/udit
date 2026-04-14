@@ -179,6 +179,29 @@ udit editor refresh
 udit editor refresh --compile
 ```
 
+### Scenes
+
+Observe and switch between scenes without dropping into `exec`. Every subcommand emits structured JSON when `--json` is set, so agents can chain results.
+
+```bash
+# List every scene asset in the project (Assets + Packages)
+udit scene list
+
+# Describe the currently active scene (path, guid, dirty state, root count)
+udit scene active
+
+# Open a scene as the single active scene
+udit scene open Assets/Scenes/Main.unity
+
+# Save every open scene that is currently dirty
+udit scene save
+
+# Reload the active scene, discarding unsaved edits (requires --force when dirty)
+udit scene reload --force
+```
+
+**Dirty-scene guard.** `scene open` and `scene reload` refuse to run when the current scene has unsaved changes. Pass `--force` to discard, or call `scene save` first. Both commands are also blocked while Unity is in play mode.
+
 ### Console Logs
 
 ```bash

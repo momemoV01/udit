@@ -111,6 +111,8 @@ func Execute() error {
 	switch category {
 	case "editor":
 		resp, err = editorCmd(subArgs, send, inst.Port)
+	case "scene":
+		resp, err = sceneCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -366,6 +368,13 @@ Editor Control:
   editor refresh                Refresh asset database
   editor refresh --compile      Recompile scripts and wait until done
 
+Scene:
+  scene list                    List every scene asset in the project
+  scene active                  Describe the currently active scene
+  scene open <path> [--force]   Open a scene (use --force to discard unsaved changes)
+  scene save                    Save all open scenes that are dirty
+  scene reload [--force]        Reload the active scene (use --force to discard changes)
+
 Console:
   console                       Read error & warning logs (default)
   console --lines 20            Limit to N entries
@@ -474,6 +483,35 @@ Examples:
   udit editor play --wait
   udit editor stop
   udit editor refresh --compile
+`)
+	case "scene":
+		fmt.Print(`Usage: udit scene <list|active|open|save|reload> [options]
+
+Subcommands:
+  list                Enumerate every scene asset in the project, including
+                      build-settings membership and build index.
+  active              Describe the currently active scene (path, guid, dirty
+                      state, root GameObject count, build index).
+  open <path>         Open a scene asset as the single active scene.
+    --force           Discard unsaved changes in the current scene first.
+                      Without --force, the call fails when the scene is dirty.
+  save                Save every open scene that is currently dirty. Reports
+                      which scenes were actually written.
+  reload              Re-open the active scene, discarding unsaved edits.
+    --force           Required when the active scene has unsaved changes.
+
+Examples:
+  udit scene list
+  udit scene active
+  udit scene open Assets/Scenes/Main.unity
+  udit scene open Assets/Scenes/Menu.unity --force
+  udit scene save
+  udit scene reload --force
+
+Notes:
+  - Scene paths are project-relative (Assets/... or Packages/...).
+  - Open / reload are blocked while Unity is in play mode.
+  - Build index comes from Build Settings; -1 means the scene is not enabled.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

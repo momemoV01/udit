@@ -180,6 +180,29 @@ udit editor refresh
 udit editor refresh --compile
 ```
 
+### 씬 관리
+
+`exec`를 거치지 않고 씬을 조회·전환할 수 있다. `--json`을 붙이면 모든 서브커맨드가 정형 JSON으로 응답하므로 에이전트가 결과를 체이닝하기 좋다.
+
+```bash
+# 프로젝트의 모든 씬 에셋 목록 (Assets + Packages)
+udit scene list
+
+# 현재 활성 씬 정보 (path, guid, dirty 여부, root GameObject 수)
+udit scene active
+
+# 단일 활성 씬으로 열기
+udit scene open Assets/Scenes/Main.unity
+
+# 열려 있는 씬 중 dirty한 것만 저장
+udit scene save
+
+# 활성 씬을 다시 로드해 변경사항 폐기 (dirty면 --force 필요)
+udit scene reload --force
+```
+
+**Dirty 가드.** 활성 씬에 저장되지 않은 변경사항이 있을 때 `scene open`과 `scene reload`는 실행을 거부한다. 버리려면 `--force`를 붙이고, 보존하려면 먼저 `scene save`를 호출한다. 두 명령 모두 플레이 모드 중에는 차단된다.
+
 ### 콘솔 로그
 
 ```bash
