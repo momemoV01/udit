@@ -47,9 +47,11 @@ func completionCmd(args []string) error {
 	return nil
 }
 
-const bashScript = `# udit bash completion
+const bashScript = `# >>> udit completion >>>
+# udit bash completion
 # Install: source <(udit completion bash)
 #       or: udit completion bash | sudo tee /etc/bash_completion.d/udit
+# Safe re-install — see README.md > "Shell completion".
 
 _udit_complete() {
     local cur prev words cword
@@ -81,12 +83,15 @@ _udit_complete() {
     COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
 }
 complete -F _udit_complete udit
+# <<< udit completion <<<
 `
 
 const zshScript = `#compdef udit
+# >>> udit completion >>>
 # udit zsh completion
 # Install: source <(udit completion zsh)
 #       or: udit completion zsh > "${fpath[1]}/_udit"
+# Safe re-install — see README.md > "Shell completion".
 
 _udit() {
     local -a commands subs
@@ -137,11 +142,14 @@ _udit() {
 }
 
 compdef _udit udit
+# <<< udit completion <<<
 `
 
-const powershellScript = `# udit PowerShell completion
+const powershellScript = `# >>> udit completion >>>
+# udit PowerShell completion
 # Install (current session): udit completion powershell | Out-String | Invoke-Expression
 # Install (persisted)      : udit completion powershell >> $PROFILE
+# Safe re-install — see README.md > "Shell completion".
 
 Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
@@ -176,10 +184,15 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
             )
         }
 }
+# <<< udit completion <<<
 `
 
-const fishScript = `# udit fish completion
+const fishScript = `# >>> udit completion >>>
+# udit fish completion
 # Install: udit completion fish > ~/.config/fish/completions/udit.fish
+#
+# (fish puts each completion in its own file, so there's no "re-install"
+# hazard like the single-profile shells above. Overwriting is always safe.)
 
 complete -c udit -n "__fish_use_subcommand" -a "editor"      -d "Play/stop/pause/refresh editor"
 complete -c udit -n "__fish_use_subcommand" -a "console"     -d "Read console logs"
@@ -204,4 +217,5 @@ complete -c udit -l project -d "Select Unity instance by path"  -r
 complete -c udit -l timeout -d "Request timeout (ms)"           -r
 complete -c udit -l json    -d "Emit JSON envelope"
 complete -c udit -l help    -d "Show help"
+# <<< udit completion <<<
 `

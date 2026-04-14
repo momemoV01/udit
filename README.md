@@ -308,6 +308,45 @@ Requires the Unity Test Framework package. PlayMode tests trigger a domain reloa
 udit list
 ```
 
+### Shell completion
+
+```bash
+# Bash   (sourced)   : source <(udit completion bash)
+# Zsh    (sourced)   : source <(udit completion zsh)
+# PowerShell         : udit completion powershell | Out-String | Invoke-Expression
+# Fish               : udit completion fish > ~/.config/fish/completions/udit.fish
+```
+
+Each completion script is wrapped in sentinel comments:
+```
+# >>> udit completion >>>
+...
+# <<< udit completion <<<
+```
+
+**Safe re-install** — running `>> $PROFILE` (or `>> ~/.bashrc`) a second time
+will duplicate the block and break the shell init. Remove the previous block
+first, then append fresh.
+
+Bash / Zsh:
+```bash
+# Strip any previous udit completion block
+sed -i '/^# >>> udit completion >>>/,/^# <<< udit completion <<</d' ~/.bashrc
+# Or for zsh: ~/.zshrc
+udit completion bash >> ~/.bashrc
+```
+
+PowerShell (Windows / cross-platform):
+```powershell
+$p = Get-Content $PROFILE -Raw
+$p = $p -replace '(?s)# >>> udit completion >>>.*?# <<< udit completion <<<\r?\n?', ''
+Set-Content $PROFILE -Value $p.TrimEnd() -Encoding utf8
+udit completion powershell | Out-File -Append -Encoding utf8 $PROFILE
+```
+
+Fish needs no cleanup — each completion lives in its own file, so overwriting
+`~/.config/fish/completions/udit.fish` is always safe.
+
 ### Custom Tools
 
 ```bash

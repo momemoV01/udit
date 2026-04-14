@@ -309,6 +309,42 @@ Unity Test Framework 패키지 필요. PlayMode 테스트는 도메인 리로드
 udit list
 ```
 
+### 셸 자동완성
+
+```bash
+# Bash   (세션)       : source <(udit completion bash)
+# Zsh    (세션)       : source <(udit completion zsh)
+# PowerShell          : udit completion powershell | Out-String | Invoke-Expression
+# Fish                : udit completion fish > ~/.config/fish/completions/udit.fish
+```
+
+각 completion 스크립트는 sentinel 주석으로 감싸져 있습니다:
+```
+# >>> udit completion >>>
+...
+# <<< udit completion <<<
+```
+
+**안전한 재설치** — `>> $PROFILE` (또는 `>> ~/.bashrc`)를 두 번 실행하면 블록이 중복 삽입되어 셸 초기화가 **깨집니다**. 반드시 이전 블록을 먼저 제거한 뒤 새로 추가하세요.
+
+Bash / Zsh:
+```bash
+# 기존 udit completion 블록 제거
+sed -i '/^# >>> udit completion >>>/,/^# <<< udit completion <<</d' ~/.bashrc
+# zsh는 ~/.zshrc
+udit completion bash >> ~/.bashrc
+```
+
+PowerShell (Windows / 크로스 플랫폼):
+```powershell
+$p = Get-Content $PROFILE -Raw
+$p = $p -replace '(?s)# >>> udit completion >>>.*?# <<< udit completion <<<\r?\n?', ''
+Set-Content $PROFILE -Value $p.TrimEnd() -Encoding utf8
+udit completion powershell | Out-File -Append -Encoding utf8 $PROFILE
+```
+
+Fish는 별도 정리 불필요 — 각 completion이 자기 파일에 있어서 `~/.config/fish/completions/udit.fish` 덮어쓰기가 항상 안전합니다.
+
 ### 커스텀 Tool
 
 ```bash
@@ -379,26 +415,6 @@ exec:
 검색 규칙: cwd → 상위로 walk-up, `$HOME` 직전에 멈춤. 첫 발견된 `.udit.yaml` 사용.
 우선순위: **CLI 플래그 > config 파일 > 빌트인 기본값**.
 
-## 셸 자동완성
-
-```bash
-# Bash
-source <(udit completion bash)
-
-# Zsh
-source <(udit completion zsh)
-
-# PowerShell (현재 세션)
-udit completion powershell | Out-String | Invoke-Expression
-
-# PowerShell (영구)
-udit completion powershell >> $PROFILE
-
-# Fish
-udit completion fish > ~/.config/fish/completions/udit.fish
-```
-
-빌트인 명령 + 서브 액션 (editor, profiler, completion) + 글로벌 플래그를 Tab 완성합니다.
 
 ## 커스텀 Tool 작성
 
