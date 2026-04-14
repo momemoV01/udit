@@ -3,7 +3,7 @@
 [English](ROADMAP.md) | [한국어](ROADMAP.ko.md)
 
 > Living plan. 버전/우선순위는 실사용 피드백에 따라 조정됨.
-> Last updated: 2026-04-14
+> Last updated: 2026-04-15
 
 ## Vision
 
@@ -34,11 +34,14 @@
 |---|---|---|---|---|
 | 0 | `v0.1.0` | Initial Fork | ✅ **Done** | unity-cli 리브랜드 기반선 |
 | 1 | `v0.2.0` | **Foundation** | ✅ **Done** | 버그 + JSON + 설정 파일 |
-| 2 | `v0.3.0` | **Observe** | 📋 Planned (다음) | 씬/에셋/GO 읽기 |
+| 2a | `v0.3.0` | **Observe — Scene & GO** | ✅ **Done** | Stable ID + `scene` + `go` |
+| 2b | `v0.3.x` | Observe — Asset & Component | 📋 Planned (다음) | `asset` + `component` |
 | 3 | `v0.4.0` | **Mutate** | 📋 Planned | GO/컴포넌트/prefab 쓰기 |
 | 4 | `v0.5.0` | **Automate** | 📋 Planned | 빌드/패키지 관리 |
 | 5 | `v0.6.0` | **Stream** | 📋 Planned | watch + log tail |
 | 6 | `v1.0.0` | **Polish & Freeze** | 📋 Planned | 테스트/문서/API 동결 |
+
+Phase 2는 원래 단일 릴리스였으나 실제 작업하며 **scene + go** 블록이 에이전트 체감 가치 라인(`exec` 의존도 급감)을 이미 넘는 것을 확인해 2a/2b로 분할. 2a만으로 v0.3.0을 출시하고 asset/component는 v0.3.x에서 증분.
 
 ---
 
@@ -168,47 +171,67 @@ udit completion powershell > $PROFILE.CurrentUserAllHosts
 
 ---
 
-## Phase 2: v0.3.0 — Observe
+## Phase 2a: v0.3.0 — Observe (Scene & GameObject)
 
-**목표**: 에이전트가 **`exec` 없이** 프로젝트 상태를 읽을 수 있게.
+**완료일**: 2026-04-15
 
-### 2.1 `scene` — 씬 관리
+**목표**: 에이전트가 **`exec` 없이** 씬과 GameObject를 조회할 수 있게. 에이전트 체감 가치 라인(`exec` 의존도 급감)을 넘기는 최소 세트.
 
-```bash
-udit scene list                      # 프로젝트 내 모든 씬
-udit scene active                    # 현재 활성 씬
-udit scene open Assets/Scenes/Main.unity
-udit scene save                      # 현재 씬 저장
-udit scene reload                    # 변경 버리고 재로드
-udit scene tree [--depth 3]          # 하이어라키 JSON 트리
-```
-
-응답 예시 (`scene tree`):
-```json
-{
-  "scene": "Assets/Scenes/Main.unity",
-  "roots": [
-    {
-      "id": "go:a1b2c3d4",
-      "name": "Player",
-      "active": true,
-      "components": ["Transform", "Rigidbody", "PlayerController"],
-      "children": [ ... ]
-    }
-  ]
-}
-```
-
-### 2.2 `go` — GameObject 쿼리
+### 2.1 `scene` — 씬 관리 ✅
 
 ```bash
-udit go find --name "Enemy*" [--tag Enemy] [--component Rigidbody]
-udit go inspect go:a1b2c3d4              # 모든 컴포넌트 + 값 덤프
-udit go path go:a1b2c3d4                 # 하이어라키 경로 문자열
+udit scene list                      # 프로젝트 내 모든 씬 (Assets + Packages, path 정렬, 빌드 인덱스)
+udit scene active                    # 현재 활성 씬 (path/guid/dirty/root_count/build_index)
+udit scene open <path> [--force]     # 씬 전환 (--force로 dirty 가드 우회)
+udit scene save                      # 열린 dirty 씬만 저장, 저장된 경로 리포트
+udit scene reload [--force]          # 활성 씬 재로드 (dirty면 --force 필요)
+udit scene tree [--depth N]          # 하이어라키 JSON 트리 + stable ID 부여
 ```
 
-**Stable ID 설계**: Unity `InstanceID`는 세션 스코프라 재시작 시 바뀜.
-→ `GlobalObjectId`를 해시해서 `go:{8자 hash}` 포맷으로 래핑.
+### 2.2 `go` — GameObject 쿼리 ✅
+
+```bash
+udit go find [--name PAT] [--tag T] [--component C] [--limit N --offset M] [--active-only]
+udit go inspect go:a1b2c3d4          # 모든 컴포넌트 + serialized 값 덤프
+udit go path go:a1b2c3d4             # 하이어라키 경로 문자열
+```
+
+**Stable ID 설계**: Unity `InstanceID`는 세션 스코프 → 재시작 시 바뀜. `GlobalObjectId`를 SHA1 해시해 `go:{8자 hex}` 포맷으로 축약. 충돌 시 10/12/14/16자로 확장. 결정적이므로 같은 GO는 세션 넘어도 동일 ID.
+
+**Pagination**: `go find`는 `--limit N --offset M` 지원. 결과는 하이어라키 경로 기준 정렬되어 페이지 간 결정적.
+
+**UCI-042 GameObjectNotFound**: 만료/알 수 없는 stable ID → 명확한 에러 코드 + "re-scan via `go find`" 가이드.
+
+### 구현 구조
+
+```
+udit-connector/Editor/Tools/
+  ManageScene.cs          (manage_scene: list/active/open/save/reload/tree)
+  ManageGameObject.cs     (manage_game_object: find/inspect/path)
+  Common/
+    StableIdRegistry.cs   (GlobalObjectId → go:hash 매핑 + 역매핑)
+    SerializedInspect.cs  (Component → JSON, Transform 특별 처리, 모든 SerializedPropertyType)
+```
+
+### Phase 2a 성공 기준
+
+- [x] 에이전트가 `exec` 없이 씬/GO "읽기" 작업을 완수 (scene + go 전체 커버)
+- [x] Stable ID로 커맨드 체이닝 가능 (`go find` → 결과 id → `go inspect`)
+- [x] Pagination 지원 (`--limit N --offset M`)
+- [x] 결정적 재현: 동일 GO는 동일 ID (세션 간 불변)
+- [ ] 대규모 씬(GameObject 10,000+)에서 응답 < 2초 *(실측 프로젝트 미확보, 후속 검증)*
+
+**완료 commit 체인** (2026-04-14 ~ 2026-04-15, v0.3.0):
+- `e8d7b62` feat(connector): StableIdRegistry 인프라
+- `570b178` feat(scene): list/active/open/save/reload
+- `8840341` feat(scene): tree (StableIdRegistry 첫 소비자)
+- `6a2d929` feat(go): find/inspect/path + pagination + UCI-042
+
+---
+
+## Phase 2b: v0.3.x — Observe (Asset & Component)
+
+**목표**: Observe 완성. v0.3.0 사용 피드백에 따라 스펙 세밀화.
 
 ### 2.3 `asset` — 에셋 쿼리
 
@@ -230,25 +253,7 @@ udit component list go:a1b2c3d4
 udit component schema Rigidbody      # 프로퍼티 + 타입 스키마
 ```
 
-### 구현 구조
-
-```
-udit-connector/Editor/Tools/
-  SceneTools.cs           (scene_list, scene_open, scene_save, scene_reload, scene_tree)
-  GameObjectTools.cs      (go_find, go_inspect, go_path)
-  AssetTools.cs           (asset_find, asset_inspect, asset_dependencies, asset_guid)
-  ComponentTools.cs       (component_get, component_list, component_schema)
-  Common/
-    StableIdRegistry.cs   (GlobalObjectId → go:hash 매핑 + 역매핑)
-    SerializedInspect.cs  (SerializedObject/SerializedProperty 순회)
-```
-
-### Phase 2 성공 기준
-
-- [ ] 에이전트가 `exec` 없이 **"읽기" 작업의 90%**를 완수
-- [ ] Stable ID로 여러 커맨드 체이닝 가능 (`go find` 결과의 id로 `go inspect` 호출)
-- [ ] 대규모 씬(GameObject 10,000+)에서 응답 < 2초
-- [ ] Pagination 지원 (`--limit N --offset M`)
+`SerializedInspect` 유틸은 이미 `go inspect`에서 쓰이므로 `component get`은 같은 값을 field 단위로 zoom-in 하는 얇은 래퍼로 충분.
 
 ---
 
@@ -620,6 +625,11 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-14 | Shell completion 정적 (cobra X) | 의존성 없이 stdlib `flag`로 충분. 4개 셸 스크립트가 string 상수 → 단순 + 즉시 검증 가능. 커스텀 `[UditTool]`은 런타임에 `udit list`로 발견 |
 | 2026-04-14 | YAML 의존성 `gopkg.in/yaml.v3` | 사실상 표준, BSD-3, 단일 모듈, 활발한 유지보수 |
 | 2026-04-14 | 한글 문서 정책 도입 | 사용자/에이전트가 읽을 가능성 있는 문서는 영어 + 한글 짝으로(`README.md` ↔ `README.ko.md`). CHANGELOG/NOTICE/LICENSE/CLAUDE.md는 영어 단일 |
+| 2026-04-15 | Stable ID 포맷 `go:{8 hex}` (SHA1 of GlobalObjectId) | InstanceID는 세션 스코프라 부적합, GlobalObjectId는 80자로 CLI에 넘기기 과함. SHA1 해시 8자로 압축해 에이전트 친화적 + 결정적 (세션 간 동일) + 32비트 충돌 확률 낮음 (1만 GO에서 ~1/86). 충돌 시 10/12/14/16자로 확장하는 escalation 내장. 구현: `StableIdRegistry.cs` |
+| 2026-04-15 | `Manage<Namespace>` + `action` 파라미터 패턴 고수 | `ManageEditor`/`ManageProfiler` 선례 유지. `ManageScene` + `ManageGameObject`도 같은 패턴. ROADMAP 예시의 `SceneTools.cs`/`GameObjectTools.cs` 분리는 fine-grained action별 UditTool 발행을 암시했으나 실제로는 단일 클래스 + switch dispatch가 코드 경제성 훨씬 좋음 |
+| 2026-04-15 | Phase 2 분할 (2a = scene+go / 2b = asset+component) | 원래 단일 v0.3.0으로 잡았으나, 2a만으로 에이전트 체감 가치 라인(exec 의존도 급감)을 이미 넘는 것을 실제 구현·검증 중 확인. 2a를 v0.3.0으로 즉시 출시하고 asset/component는 피드백 받으며 v0.3.x 증분으로 추가하는 게 유지보수 건강에도 맞음 |
+| 2026-04-15 | Dirty-scene 가드 (`--force` 요구) | `scene open`/`scene reload`가 dirty 씬에서 `EditorSceneManager.OpenScene`을 호출하면 Unity가 조용히 변경을 폐기함. 에이전트가 실수로 작업을 날리는 리스크. 기본 refuse + `--force`로 명시적 discard. Save 후 호출하거나 force로 명시 둘 중 선택하게 강제 |
+| 2026-04-15 | `SerializedInspect` 유틸에서 Transform만 특별 처리 | `SerializedObject`는 `m_LocalPosition` 등만 노출하지만 에이전트는 world 좌표도 필요. 컴포넌트 전체 reflection은 overkill — Transform만 `t.position`/`t.eulerAngles` 직접 읽어 반환. 나머지 컴포넌트는 visible SerializedProperty walk. Enum `{value, name}`, Color `{r,g,b,a}`, ObjectRef `{type, name, path, guid}`, 배열은 20 clip + `{count, elements, truncated}` |
 
 ---
 
@@ -643,5 +653,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] Phase 1 전체 (1.1 ~ 1.5)
 - [x] v0.2.0 태그 push + Release 검증 (2026-04-14)
 - [x] v0.2.1 patch: sentinel markers + Node 20 actions 완전 제거 + 실전 검증
+- [x] Phase 2a 착수 — StableIdRegistry + scene + go (2026-04-14 ~ 2026-04-15)
+- [x] **v0.3.0 태그 push + Release 검증** (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 위해)
-- [ ] **Phase 2 (Observe) 착수** — Stable ID 인프라 → `scene` 명령부터
+- [ ] **Phase 2b** — `asset find/inspect/dependencies/references/guid/path` + `component get/list/schema`
+- [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find` 응답 시간 실측)
