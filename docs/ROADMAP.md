@@ -605,6 +605,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-14 | `master` → `main` | 현대 표준 (원본은 `master`) |
 | 2026-04-14 | README.ko.md 삭제 | 1인 유지보수, 단일 영어 README로 통일 |
 | 2026-04-14 | v0.1.0 reset | fork 정체성 명확화 (upstream v0.3.9과 분리) |
+| 2026-04-14 | 바이너리 설치 위치 `%LOCALAPPDATA%\udit\udit.exe` | Windows 관례 + User PATH 등록 편리. 단 Claude Desktop(MSIX) 샌드박스 이슈 있어 **외부 PowerShell에서 빌드 필수** — CLAUDE.md 참고 |
+| 2026-04-14 | Unity 프로젝트에 `file:` 로컬 경로로 Connector 설치 | Private repo라 UPM Git URL 대신. 원본 unity-cli와 포트/네임스페이스 분리로 공존 검증 성공 |
 
 ---
 

@@ -105,6 +105,43 @@ Commit all unstaged changes before finishing. Unrelated changes should be commit
 
 기본 HTTP 포트는 **8590** (원본 unity-cli의 `8090`과 공존 가능하도록 분리).
 
+## Windows Store Claude Desktop 샌드박스 주의사항
+
+Windows용 Claude Desktop이 **Microsoft Store(MSIX) 패키지**로 설치된 환경에서는 Claude Code 내부에서 실행한 파일 쓰기가 **앱 컨테이너로 리다이렉트**된다. 이는 조용히 일어나고, 실수하기 쉬우므로 반드시 주의:
+
+### 증상
+- Claude Code의 Bash에서 `%LOCALAPPDATA%\udit\udit.exe` 를 빌드했는데
+- 외부 cmd/PowerShell/탐색기에서는 **해당 파일이 보이지 않음**
+- `Get-Item`의 `Target` 속성에 `C:\Users\<user>\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\...` 표시
+
+### 원인
+MSIX 앱(Claude Desktop)은 `%LOCALAPPDATA%`, `%APPDATA%`, `%ProgramFiles%` 등 시스템 폴더 쓰기를 **자동으로 Package 샌드박스로 매핑**한다. 레지스트리 쓰기도 마찬가지. 이는 Windows의 App Container 보안 모델.
+
+### 규칙
+
+1. **udit 바이너리 설치/업데이트는 반드시 Claude 밖에서**:
+   ```powershell
+   # 시작 메뉴 → PowerShell (Claude 안의 터미널 X)
+   cd E:\Workspace\udit
+   go build -ldflags="-s -w -X main.Version=vX.Y.Z-local" -o "$env:LOCALAPPDATA\udit\udit.exe" .
+   ```
+   → 실제 `C:\Users\<user>\AppData\Local\udit\` 에 기록되어 외부 터미널에서도 사용 가능.
+
+2. **Claude 내부 작업은 프로젝트 경로에서만**:
+   - `E:\Workspace\udit\` 같이 사용자 명시 경로는 가상화 X
+   - `go test`, 소스 편집, commit, push는 내부 Bash에서 OK
+
+3. **PATH 등록**은 Claude 내/외 무관하게 레지스트리에 정상 저장 (확인됨).
+
+4. **의심스러우면 `Target` 확인**:
+   ```powershell
+   (Get-Item "$env:LOCALAPPDATA\udit\udit.exe").Target
+   ```
+   값이 `Packages\Claude_*` 를 포함하면 가상화된 파일.
+
+### 우회 불가 작업
+외부 접근이 필요한 파일 생성/수정(바이너리 설치, 데스크톱 단축키 등)은 **반드시 사용자에게 외부 터미널 실행을 안내**할 것.
+
 ## 릴리스 플로우
 
 "커밋하고 올려" 지시 시 아래를 한 번에 수행:
