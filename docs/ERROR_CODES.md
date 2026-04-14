@@ -1,0 +1,138 @@
+# Error Codes (UCI-xxx)
+
+Stable identifiers in `--json` responses. Agents should branch on these instead of parsing English message text. Codes are mapped from both the Go CLI side (UCI-001..003 — connectivity) and the Unity Connector side (UCI-010+ — request/runtime).
+
+## Quick Reference
+
+| Code | Name | Origin | Retry? | Typical cause |
+|---|---|---|---|---|
+| `UCI-001` | NoUnityRunning | CLI | ❌ User must launch Unity | No instance file, dead PID, wrong port |
+| `UCI-002` | ConnectionRefused | CLI | ⏳ After 1-3s | Connector HTTP server not yet up |
+| `UCI-003` | CommandTimeout | CLI | ⏳ After delay | `--timeout` exceeded; Unity busy or hung |
+| `UCI-010` | UnknownCommand | Connector | ❌ Fix command name | Typo or missing `[UditTool]` registration |
+| `UCI-011` | InvalidParams | Connector | ❌ Fix params | Required param missing, out of bounds, wrong shape |
+| `UCI-020` | UnityCompiling | Connector | ⏳ After 2-3s | Script recompilation in progress |
+| `UCI-021` | UnityUpdating | Connector | ⏳ After 2-3s | Asset import in progress |
+| `UCI-030` | ExecCompileError | Connector | ❌ Fix C# code | `udit exec` syntax/semantic error |
+| `UCI-031` | ExecRuntimeError | Connector | ❌ Fix C# logic | `udit exec` threw at runtime |
+| `UCI-040` | AssetNotFound | Connector | ❌ Fix path/GUID | Reserved for Phase 2 (Observe) |
+| `UCI-041` | SceneNotFound | Connector | ❌ Fix path | Reserved for Phase 2 (Observe) |
+| `UCI-999` | Unknown | Either | 🟡 Inspect message | Unclassified — log & report upstream |
+
+## Detail
+
+### `UCI-001` — NoUnityRunning
+
+**Origin**: Go CLI (`cmd/output.go > classifyGoError`)
+**Triggers when**:
+- `~/.udit/instances/` empty or missing
+- All instance files have dead PIDs (process gone)
+- `--port N` requested but no instance on that port
+- `--project SUBSTR` requested but no projectPath matches
+
+**Agent action**: Stop. Ask the user to launch Unity (with the udit-connector package). Do not retry — the situation won't change automatically.
+
+**Example**:
+```json
+{
+  "success": false,
+  "command": "status",
+  "error_code": "UCI-001",
+  "message": "no status for port 9999 — Unity may not be running"
+}
+```
+
+### `UCI-002` — ConnectionRefused
+
+**Origin**: Go CLI
+**Triggers when**: Instance file exists and PID is alive, but TCP connect to `127.0.0.1:<port>` fails. Usually means the HttpServer just restarted (domain reload) and isn't listening yet.
+
+**Agent action**: Wait 1-3 seconds and retry once. If still failing, fall back to UCI-001 reasoning (something more wrong).
+
+### `UCI-003` — CommandTimeout
+
+**Origin**: Go CLI
+**Triggers when**: `httpClient.Timeout` exceeds (default 120000ms; overridable via `--timeout`).
+
+**Agent action**: For commands that take longer (e.g. `editor refresh --compile` on huge projects, `test --mode PlayMode`), retry with a higher `--timeout`. For quick commands, treat as a sign Unity is hung — `udit status` to check.
+
+### `UCI-010` — UnknownCommand
+
+**Origin**: Connector (`CommandRouter`)
+**Triggers when**: No `[UditTool]` handler matches the command name.
+
+**Agent action**: Run `udit list` to see registered tools. Check spelling. If a custom tool was added, ensure the Editor assembly compiled (no Console errors).
+
+### `UCI-011` — InvalidParams
+
+**Origin**: Connector (multiple tools)
+**Triggers when**:
+- Required parameter missing (e.g. `exec` without `code`)
+- Out-of-bounds value (e.g. `screenshot --width -1` or `--width 99999`)
+- Wrong enum value (e.g. `screenshot --view invalid`)
+- Malformed request body (HTTP layer)
+
+**Agent action**: Read the message — it always names the offending parameter. Fix and retry. Do not retry verbatim.
+
+### `UCI-020` / `UCI-021` — Unity Busy
+
+**Origin**: Connector (`CommandRouter` guard)
+**Triggers when**: `EditorApplication.isCompiling` (020) or `isUpdating` (021) is true. The router refuses most commands during these states because Unity APIs throw or hang mid-reload.
+
+**Agent action**: Wait 2-3 seconds and retry. The `list` command remains exempt and always works. `udit status` reports the current state.
+
+### `UCI-030` — ExecCompileError
+
+**Origin**: Connector (`ExecuteCsharp`)
+**Triggers when**: csc returns non-zero (compile error in supplied C# code) or hangs past the 30s timeout.
+
+**Agent action**: Read the error — it includes line numbers from the user's snippet. Fix the C# and retry. Do not retry the same code.
+
+### `UCI-031` — ExecRuntimeError
+
+**Origin**: Connector (`ExecuteCsharp`)
+**Triggers when**: Compiled snippet throws at runtime (NullReferenceException, etc).
+
+**Agent action**: Same as 030 — read the message, fix the C#, retry. Often paired with a `Debug.LogException` in Unity Console (visible via `udit console --type error`).
+
+### `UCI-040` / `UCI-041` — Asset/Scene Not Found
+
+**Origin**: Connector (Phase 2 `AssetTools` / `SceneTools` — reserved)
+**Triggers when**: Will be emitted by `asset find/inspect` and `scene open` once those commands ship in v0.3.0.
+
+**Agent action**: Verify path/GUID, run `asset find` to discover correct identifier.
+
+### `UCI-999` — Unknown
+
+**Origin**: Either side
+**Triggers when**: An error path that hasn't been classified yet. Always paired with a human-readable message.
+
+**Agent action**: Surface the message to the user. If reproducible, file an issue — `UCI-999` occurrences are tech debt to be promoted to a real code.
+
+## Agent Decision Flow
+
+```
+                         ┌───────────────┐
+                         │ Got error_code │
+                         └───────┬───────┘
+                                 │
+            ┌────────────────────┼────────────────────┐
+            ▼                    ▼                    ▼
+       UCI-001/010/030      UCI-002/020/021         UCI-003
+       UCI-011/031/040      ────────────────       ───────
+       UCI-041                                       
+       ───────────────                                
+       Stop. Report to       Sleep 1-3s,           Retry once
+       user. Don't loop.     retry once.           with longer
+                             Loop max 3x.          --timeout.
+```
+
+## Adding New Codes
+
+1. Add the constant to `udit-connector/Editor/Core/Response.cs > ErrorCodes`
+2. Use it at the call site: `new ErrorResponse(ErrorCodes.MyNewCode, "...")`
+3. Document here (description, origin, retry, agent action, example)
+4. If the CLI-side detection is needed, extend `cmd/output.go > classifyGoError`
+5. Bump `CHANGELOG.md` `[Unreleased] > Added` with the new code
+
+Codes are stable identifiers. **Never repurpose an existing code.** If a category needs to split, allocate a new number in the same 0xx band.

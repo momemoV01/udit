@@ -403,6 +403,9 @@ Global Options:
   --port <N>          Connect to specific Unity port (skip auto-discovery)
   --project <path>    Select Unity instance by project path
   --timeout <ms>      Request timeout in ms (default: 120000)
+  --json              Emit machine-readable JSON envelope (success → stdout,
+                      error → stderr) with stable error_code field.
+                      See docs/ERROR_CODES.md for the UCI-xxx registry.
 
 Use "udit <command> --help" for more information about a command.
 
