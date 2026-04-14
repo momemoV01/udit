@@ -350,10 +350,13 @@ udit component copy go:aaaa1111 Rigidbody go:bbbb2222
 | Vector2 / 3 / 4 / Quaternion | 쉼표로 구분한 float (`"x,y"`, `"x,y,z"`, `"x,y,z,w"`) |
 | Color | 0–1 범위 float `"r,g,b[,a]"` 또는 `"#RRGGBB[AA]"` |
 | Enum | display name (`"Solid Color"`) 또는 value index |
+| ObjectReference | 에셋 경로 (`"Assets/Sprites/Player.png"`) 또는 clear는 `"null"` / `"none"` |
 
 Transform은 `component set`에서도 **virtual field**를 노출: `position`, `local_position`, `rotation_euler`, `local_rotation_euler`, `local_scale` — 모두 `"x,y,z"`. `component get`이 반환하는 것과 동일하므로 round-trip 가능.
 
-ObjectReference / Curve / Gradient / ManagedReference은 이 버전에서 **읽기 전용**; set 시 `UCI-011` + 안내 메시지 반환.
+**ObjectReference**는 어떤 프로젝트 에셋 경로든 받음. 서브에셋이 있는 경로(예: `.png`가 `Texture2D` + `Sprite`로 임포트된 경우)는 `component set`이 **타겟 필드 타입에 assign 가능한 첫 서브에셋**을 자동 선택. 해당 경로에 호환되는 에셋이 없으면 `UCI-011` + 기대 타입 + 실제 발견된 타입 표시. 씬 오브젝트 참조(`go:XXXXXXXX`)는 이 버전에서 `component set`으로 쓰기 불가 — `udit exec`로 우회.
+
+AnimationCurve / Gradient / ExposedReference / ManagedReference은 여전히 **읽기 전용**; set 시 `UCI-011` + 안내 메시지 반환.
 
 ### 에셋 쿼리
 

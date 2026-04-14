@@ -857,8 +857,27 @@ namespace UditConnector.Tools
                     { error = $"Field is Enum, value '{value}' is neither a known name nor valid integer. Names: {string.Join(",", prop.enumDisplayNames ?? new string[0])}."; return false; }
                     return true;
 
+                case SerializedPropertyType.ObjectReference:
+                    {
+                        var existing = prop.objectReferenceValue;
+                        oldJsonValue = existing != null
+                            ? new
+                            {
+                                type = existing.GetType().Name,
+                                name = existing.name,
+                                path = AssetDatabase.GetAssetPath(existing),
+                            }
+                            : null;
+                        // We validate by actually resolving. On the apply path we
+                        // call the same resolver again — AssetDatabase caches the
+                        // path->guid lookup so the double cost is negligible.
+                        if (!TryResolveObjectReference(prop, value, out _, out var resolveError))
+                        { error = resolveError; return false; }
+                        return true;
+                    }
+
                 default:
-                    error = $"Setting SerializedPropertyType.{prop.propertyType} is not supported yet. This version writes: Integer, Boolean, Float, String, Vector2/3/4, Quaternion, Color, Enum, LayerMask. ObjectReference/Curve/Gradient/ManagedReference are read-only for now.";
+                    error = $"Setting SerializedPropertyType.{prop.propertyType} is not supported yet. This version writes: Integer, Boolean, Float, String, Vector2/3/4, Quaternion, Color, Enum, LayerMask, ObjectReference. AnimationCurve/Gradient/ExposedReference/ManagedReference are read-only for now.";
                     return false;
             }
         }
@@ -907,6 +926,16 @@ namespace UditConnector.Tools
                     TryParseEnum(prop, value, out var e);
                     prop.enumValueIndex = e;
                     break;
+                case SerializedPropertyType.ObjectReference:
+                    // Resolve again here rather than threading the loaded asset
+                    // through the parse->apply split. AssetDatabase caches the
+                    // path lookup so the cost is trivial, and keeping the two
+                    // paths symmetric avoids a "parse said yes but apply
+                    // crashed" disconnect if the asset was swapped between
+                    // validation and write.
+                    if (TryResolveObjectReference(prop, value, out var obj, out _))
+                        prop.objectReferenceValue = obj; // null clears the reference
+                    break;
             }
         }
 
@@ -935,6 +964,15 @@ namespace UditConnector.Tools
                     return new { r = c2.r, g = c2.g, b = c2.b, a = c2.a };
                 case SerializedPropertyType.Enum:
                     return new { value = prop.intValue, name = (prop.enumDisplayNames != null && prop.enumValueIndex >= 0 && prop.enumValueIndex < prop.enumDisplayNames.Length) ? prop.enumDisplayNames[prop.enumValueIndex] : null };
+                case SerializedPropertyType.ObjectReference:
+                    var oref = prop.objectReferenceValue;
+                    if (oref == null) return null;
+                    return new
+                    {
+                        type = oref.GetType().Name,
+                        name = oref.name,
+                        path = AssetDatabase.GetAssetPath(oref),
+                    };
                 default:
                     return null;
             }
@@ -1053,6 +1091,126 @@ namespace UditConnector.Tools
             }
             enumValueIndex = 0;
             return false;
+        }
+
+        static bool TryResolveObjectReference(SerializedProperty prop, string value, out UnityEngine.Object obj, out string error)
+        {
+            obj = null;
+            error = null;
+
+            // Clearing the reference: treat "null", "none", and "" as clear.
+            // We accept three spellings because agents occasionally pick the
+            // one that matches their vocabulary (JSON null, Unity "None").
+            if (string.IsNullOrEmpty(value) ||
+                string.Equals(value, "null", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Scene-object references (go:XXXXXXXX) go through a different
+            // code path in Unity — they carry a SceneObjectReference payload
+            // rather than an asset PPtr. Punt on those in v0.4.x with a
+            // clear hint; an agent that really needs scene refs can fall
+            // back to exec until we ship them properly.
+            if (value.StartsWith("go:", StringComparison.Ordinal))
+            {
+                error = $"Scene object references ({value}) are not writable via component set in this version. " +
+                        $"Use `udit exec` to assign scene references for now.";
+                return false;
+            }
+
+            // Otherwise expect an asset path.
+            if (!(value.StartsWith("Assets/", StringComparison.Ordinal) ||
+                  value.StartsWith("Packages/", StringComparison.Ordinal)))
+            {
+                error = $"ObjectReference value must be an asset path (Assets/... or Packages/...), " +
+                        $"or 'null'/'none'/'' to clear. Got '{value}'.";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(value)))
+            {
+                // Reuse the registry's asset-not-found signal. We raise it
+                // inline rather than letting the caller emit UCI-011 because
+                // "asset at path X does not exist" and "asset exists but
+                // wrong type" are genuinely different problems for an agent.
+                error = $"Asset not found: {value}";
+                return false;
+            }
+
+            // Resolve the expected type from the field. SerializedProperty.type
+            // comes back as "PPtr<$Sprite>" for ObjectReference fields; strip
+            // the wrapper to get the bare type name.
+            var expectedTypeName = StripPPtrWrapper(prop.type);
+            var expectedType = ResolveUnityObjectType(expectedTypeName);
+
+            // LoadAllAssetsAtPath returns [main, sub...]. For a texture with
+            // a Sprite sub-asset that is exactly what agents expect — they
+            // pass the .png path and the Sprite gets assigned. We pick the
+            // FIRST asset assignable to the expected type so "plain" asset
+            // types (ScriptableObject, AudioClip, etc.) still work via their
+            // main asset.
+            var candidates = AssetDatabase.LoadAllAssetsAtPath(value);
+            foreach (var candidate in candidates)
+            {
+                if (candidate == null) continue;
+                if (expectedType == null || expectedType.IsAssignableFrom(candidate.GetType()))
+                {
+                    obj = candidate;
+                    return true;
+                }
+            }
+
+            var found = new List<string>();
+            foreach (var c in candidates)
+                if (c != null) found.Add(c.GetType().Name);
+
+            error = found.Count == 0
+                ? $"Asset at '{value}' contains no assignable objects."
+                : $"Asset at '{value}' has no {expectedTypeName} (found: {string.Join(", ", found)}).";
+            return false;
+        }
+
+        static string StripPPtrWrapper(string s)
+        {
+            // Unity's objectReferenceTypeString comes back in the form
+            // "PPtr<$Sprite>" for most Editor surfaces. Some older paths use
+            // "PPtr<Sprite>" without the $. Handle both.
+            if (string.IsNullOrEmpty(s)) return s;
+            const string prefix = "PPtr<";
+            const string suffix = ">";
+            if (!s.StartsWith(prefix, StringComparison.Ordinal) || !s.EndsWith(suffix, StringComparison.Ordinal))
+                return s;
+            var inner = s.Substring(prefix.Length, s.Length - prefix.Length - suffix.Length);
+            return inner.StartsWith("$", StringComparison.Ordinal) ? inner.Substring(1) : inner;
+        }
+
+        static Type ResolveUnityObjectType(string shortName)
+        {
+            if (string.IsNullOrEmpty(shortName)) return null;
+
+            // Try UnityEngine.* first (by far the most common — Sprite,
+            // Texture, AudioClip, etc.). Fall back to any assembly so
+            // project-local ScriptableObject types resolve too.
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var t = asm.GetType("UnityEngine." + shortName, throwOnError: false);
+                if (t != null && typeof(UnityEngine.Object).IsAssignableFrom(t))
+                    return t;
+            }
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type[] types;
+                try { types = asm.GetTypes(); }
+                catch (System.Reflection.ReflectionTypeLoadException) { continue; }
+                foreach (var t in types)
+                {
+                    if (!typeof(UnityEngine.Object).IsAssignableFrom(t)) continue;
+                    if (t.Name == shortName || t.FullName == shortName) return t;
+                }
+            }
+            return null;
         }
 
         static void MarkActiveSceneDirty()

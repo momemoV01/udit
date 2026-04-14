@@ -349,10 +349,13 @@ udit component copy go:aaaa1111 Rigidbody go:bbbb2222
 | Vector2 / 3 / 4 / Quaternion | comma-separated floats (`"x,y"`, `"x,y,z"`, `"x,y,z,w"`) |
 | Color | `"r,g,b[,a]"` in 0–1 range, or `"#RRGGBB[AA]"` |
 | Enum | display name (`"Solid Color"`) or value index |
+| ObjectReference | Asset path (`"Assets/Sprites/Player.png"`) or `"null"` / `"none"` to clear |
 
 Transform exposes **virtual fields** for world + local coordinates on `component set` as well: `position`, `local_position`, `rotation_euler`, `local_rotation_euler`, `local_scale` — all take `"x,y,z"`. This matches what `component get` returns, so round-tripping works.
 
-ObjectReference / Curve / Gradient / ManagedReference are **read-only** in this version; attempting to set them returns `UCI-011` with guidance.
+**ObjectReference** accepts any project asset path. If the path has sub-assets (e.g. a `.png` imported with both `Texture2D` and `Sprite`), `component set` auto-picks the first sub-asset assignable to the target field's type. For fields with no compatible asset at the given path, you get `UCI-011` with the expected type and what was actually found at that path. Scene object references (`go:XXXXXXXX`) are not writable through `component set` in this version — fall back to `udit exec` for those.
+
+AnimationCurve / Gradient / ExposedReference / ManagedReference are still **read-only** in this version; attempting to set them returns `UCI-011` with guidance.
 
 ### Assets
 
