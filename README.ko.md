@@ -391,6 +391,35 @@ udit asset path 8c9cfa26abfee488c85f1582747f6a02
 
 알 수 없는 path/GUID는 `UCI-040 AssetNotFound` — `asset find`로 먼저 식별자를 검증.
 
+### Prefab
+
+`scene` + `go` + `asset` 위의 Prefab 연산. `instantiate`는 `PrefabUtility.InstantiatePrefab`을 사용하므로 씬 인스턴스가 에셋과의 link를 유지 (`Object.Instantiate`와 다름). 모든 연산 Unity Undo 통과.
+
+```bash
+# prefab asset의 씬 인스턴스 생성. --pos는 localPosition.
+udit prefab instantiate Assets/Prefabs/Enemy.prefab
+udit prefab instantiate Assets/Prefabs/Enemy.prefab --parent go:abcd1234 --pos 5,0,0
+
+# 씬 인스턴스를 일반 GameObject로 변환 (prefab link 끊김).
+udit prefab unpack go:5678abcd                       # 외곽 루트만
+udit prefab unpack go:5678abcd --mode completely     # 중첩 prefab까지 전부
+
+# 씬 인스턴스의 override를 prefab 에셋에 commit.
+# 인스턴스 내부 어느 GO든 받음 — 외곽 루트로 자동 resolve.
+udit prefab apply go:5678abcd
+
+# 주어진 prefab의 모든 씬 인스턴스 찾기.
+udit prefab find-instances Assets/Prefabs/Enemy.prefab
+```
+
+**Unpack 시 stable ID 변경됨.** prefab 인스턴스가 unpack되면 Unity의 `GlobalObjectId`가 바뀌고 (더 이상 에셋과 연결 안 됨), 결과적으로 stable ID도 바뀐다. `unpack` 응답에 **새 ID**가 포함되므로 이후 연산에 그것을 사용. 옛 ID는 `UCI-042` 반환.
+
+실패 케이스:
+- 경로에 에셋 없음 → `UCI-040`.
+- 경로 존재하지만 GameObject 아님 (예: 스크립트 파일) → `UCI-011` + `asset inspect`로 실제 타입 확인 힌트.
+- GameObject 에셋이지만 prefab이 아님 (예: 날것의 모델) → `UCI-011`.
+- `unpack`/`apply`에 prefab 인스턴스가 아닌 GO → `UCI-011`.
+
 ### 콘솔 로그
 
 ```bash

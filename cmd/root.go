@@ -119,6 +119,8 @@ func Execute() error {
 		resp, err = componentCmd(subArgs, send)
 	case "asset":
 		resp, err = assetCmd(subArgs, send)
+	case "prefab":
+		resp, err = prefabCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -413,6 +415,12 @@ Assets:
   asset references <path> [--limit N]               Who references this asset (full scan)
   asset guid <path>                                 Path -> Unity GUID
   asset path <guid>                                 Unity GUID -> path
+
+Prefabs:
+  prefab instantiate <path> [--parent go:P] [--pos x,y,z]   Spawn a prefab instance
+  prefab unpack go:XXXXXXXX [--mode root|completely]        Convert instance -> plain GO
+  prefab apply go:XXXXXXXX                                  Commit overrides to asset
+  prefab find-instances <path>                              List scene instances
 
 Console:
   console                       Read error & warning logs (default)
@@ -762,6 +770,61 @@ Notes:
     when possible, and always set --limit on larger projects.
   - 'inspect' on a Prefab returns just a top-level summary (root components,
     child count). Use 'scene open' or 'scene tree' to walk the hierarchy.
+`)
+	case "prefab":
+		fmt.Print(`Usage: udit prefab <instantiate|unpack|apply|find-instances> [options]
+
+Prefab operations. Asset paths are project-relative (` + "`Assets/...`" + ` or
+` + "`Packages/...`" + `); stable IDs are go:XXXXXXXX issued by scene tree / go find.
+
+Subcommands:
+  instantiate <path>
+      Spawn a scene instance of a prefab asset. Returns the new go: ID.
+      Uses PrefabUtility.InstantiatePrefab so the instance keeps its link
+      to the asset (unlike Object.Instantiate).
+    --parent <go:P>   Attach under this GameObject. Omit for scene root.
+    --pos x,y,z       localPosition of the new instance. Default 0,0,0.
+                      Matches the convention of ` + "`go create --pos`" + `.
+
+  unpack <go:XXXXXXXX>
+      Convert a prefab instance into a plain GameObject. Breaks the link
+      to the asset — the GO retains its current state but future changes
+      to the prefab will not propagate.
+    --mode root         (default) Only the outermost prefab root is
+                        unpacked; nested prefab instances inside keep
+                        their links.
+    --mode completely   Unpack everything recursively, including nested
+                        prefab instances.
+
+  apply <go:XXXXXXXX>
+      Commit the scene instance's overrides back to the prefab asset.
+      Works on the outermost prefab root; passing a nested GO under an
+      instance auto-resolves to the outermost root.
+
+  find-instances <path>
+      Walk every loaded scene and return all outermost instances of the
+      given prefab. Response has { id, name, scene, path } per match.
+      Read-only — no Undo entry.
+
+All mutation subcommands support --dry-run to preview without touching
+the scene.
+
+Examples:
+  udit prefab instantiate Assets/Prefabs/Enemy.prefab --pos 5,0,0
+  udit prefab instantiate Assets/Prefabs/Enemy.prefab --parent go:abcd1234
+  udit prefab unpack go:5678abcd
+  udit prefab unpack go:5678abcd --mode completely
+  udit prefab apply go:5678abcd
+  udit prefab find-instances Assets/Prefabs/Enemy.prefab
+
+Notes:
+  - Path not a prefab asset -> UCI-040 AssetNotFound.
+  - Path exists but is not a prefab (e.g. a model or plain
+    GameObject asset) -> UCI-011 with a clear message.
+  - Passing a non-instance go: to unpack/apply -> UCI-011
+    "not a prefab instance".
+  - Mutations are blocked in play mode and register with Unity Undo;
+    Ctrl+Z in the Editor reverses each op independently.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

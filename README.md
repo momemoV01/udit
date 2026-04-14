@@ -390,6 +390,35 @@ udit asset path 8c9cfa26abfee488c85f1582747f6a02
 
 Unknown paths or GUIDs return `UCI-040 AssetNotFound` — verify the identifier with `asset find` before retrying.
 
+### Prefabs
+
+Prefab operations on top of `scene` + `go` + `asset`. `instantiate` uses `PrefabUtility.InstantiatePrefab` so the scene instance keeps its link back to the asset (unlike `Object.Instantiate`), and everything goes through Unity Undo.
+
+```bash
+# Spawn a scene instance of a prefab asset. --pos sets localPosition.
+udit prefab instantiate Assets/Prefabs/Enemy.prefab
+udit prefab instantiate Assets/Prefabs/Enemy.prefab --parent go:abcd1234 --pos 5,0,0
+
+# Convert a scene instance back to a plain GameObject (breaks the prefab link).
+udit prefab unpack go:5678abcd                       # outermost root only
+udit prefab unpack go:5678abcd --mode completely     # including nested prefabs
+
+# Commit the scene instance's overrides back to the prefab asset.
+# Works on any GO inside an instance — auto-resolves to the outermost root.
+udit prefab apply go:5678abcd
+
+# Find every scene instance of a given prefab.
+udit prefab find-instances Assets/Prefabs/Enemy.prefab
+```
+
+**Stable IDs shift on unpack.** When a prefab instance is unpacked, Unity's `GlobalObjectId` for the GO changes (it's no longer tied to the asset), so the stable id the registry emits changes too. The `unpack` response returns the new id — use that for subsequent operations. The old id returns `UCI-042`.
+
+Failure modes:
+- No asset at the given path → `UCI-040`.
+- Path exists but isn't a GameObject (e.g. a script file) → `UCI-011` with a hint to run `asset inspect` for the actual type.
+- GameObject asset exists but isn't a prefab (e.g. a raw model) → `UCI-011`.
+- `unpack`/`apply` on a GO that isn't a prefab instance → `UCI-011`.
+
 ### Console Logs
 
 ```bash
