@@ -276,6 +276,39 @@ Failure modes:
 - Type not on the GameObject, bad `--index`, or `schema` with no live instance → `UCI-043`; the message enumerates attached types or instance count so agents can self-correct.
 - Field path does not exist → `UCI-011` with the list of valid top-level fields.
 
+### Assets
+
+Query the AssetDatabase — prefabs, textures, materials, scripts, and anything else Unity indexes. Paths are project-relative (`Assets/...` or `Packages/...`), GUIDs are Unity's 32-char hex strings.
+
+```bash
+# Filter by type (maps to Unity's 't:' syntax), label, name glob, or folder scope
+udit asset find --type Prefab
+udit asset find --type Texture2D --folder Assets/Art --limit 20
+udit asset find --label boss --name "*Enemy*"
+
+# Full metadata plus a type-specific 'details' block
+# (Texture2D: dimensions + format, Material: shader + properties,
+#  Prefab: root components, AudioClip: length + channels, etc.)
+udit asset inspect Assets/Materials/Player.mat
+
+# What does this asset depend on? Direct by default, --recursive for transitive.
+udit asset dependencies Assets/Scenes/Main.unity
+udit asset dependencies Assets/Scenes/Main.unity --recursive
+
+# Who references this asset? Unity has no reverse index, so this does a full
+# project scan. Response includes scan_ms + scanned_assets so agents see the
+# cost. Always set --limit on large projects.
+udit asset references Assets/Prefabs/Enemy.prefab --limit 50
+
+# GUID / path round-trip
+udit asset guid Assets/Scenes/SampleScene.unity
+udit asset path 8c9cfa26abfee488c85f1582747f6a02
+```
+
+`inspect` handles Prefab, Texture2D, Material, AudioClip, ScriptableObject, and TextAsset with type-specific detail blocks. Other types still return the common header (`path`, `guid`, `name`, `type`, `labels`) with `details: null` so agents can at least key off the type.
+
+Unknown paths or GUIDs return `UCI-040 AssetNotFound` — verify the identifier with `asset find` before retrying.
+
 ### Console Logs
 
 ```bash

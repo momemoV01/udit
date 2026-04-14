@@ -17,7 +17,7 @@
 | `UCI-021` | UnityUpdating | Connector | ⏳ 2-3초 후 | 에셋 import 진행 중 |
 | `UCI-030` | ExecCompileError | Connector | ❌ C# 코드 수정 | `udit exec` 문법/의미 에러 |
 | `UCI-031` | ExecRuntimeError | Connector | ❌ C# 로직 수정 | `udit exec` 런타임에서 throw |
-| `UCI-040` | AssetNotFound | Connector | ❌ 경로/GUID 수정 | Phase 2 (Observe) 예약 |
+| `UCI-040` | AssetNotFound | Connector | ❌ 경로/GUID 수정 | `asset inspect`/`dependencies`/`references`/`guid`/`path` 에 AssetDatabase가 resolve 못 하는 path/GUID |
 | `UCI-041` | SceneNotFound | Connector | ❌ 경로 수정 | `scene open`에 존재하지 않는 경로 |
 | `UCI-042` | GameObjectNotFound | Connector | ❌ 재스캔 후 ID 수정 | `go inspect` / `go path` 에 오래되거나 알 수 없는 stable ID |
 | `UCI-043` | ComponentNotFound | Connector | ❌ 타입명 수정 | `component get` / `component schema` 에서 GameObject에 해당 타입이 없거나, 로드된 어셈블리에 그런 타입 자체가 없음 |
@@ -101,10 +101,12 @@
 
 ### `UCI-040` / `UCI-041` — Asset/Scene Not Found
 
-**출처**: Connector (`ManageScene`이 041을 emit; 040은 `AssetTools` 용으로 예약)
-**발생 시점**: `udit scene open <path>` 에 씬 에셋이 아닌 경로를 넘겼을 때. `UCI-040`은 `asset find/inspect` 가 들어오면 사용.
+**출처**: Connector (`ManageAsset`이 040, `ManageScene`이 041을 emit)
+**발생 시점**: AssetDatabase가 path/GUID를 resolve 못 할 때.
+- `UCI-040` — `asset inspect`, `asset dependencies`, `asset references`, `asset guid` 에 없는 path; `asset path` 에 없는 GUID.
+- `UCI-041` — `scene open <path>` 에 존재하지 않는 경로.
 
-**에이전트 행동**: 경로 검증. `udit scene list` 가 모든 씬의 path + GUID를 돌려주므로 이걸로 올바른 식별자 탐색.
+**에이전트 행동**: 식별자 검증. `udit asset find` (UCI-040) 또는 `udit scene list` (UCI-041)로 유효한 path/GUID 탐색. 경로는 프로젝트 상대로 `Assets/` 또는 `Packages/` 시작. GUID는 32자 hex (dash 없음).
 
 ### `UCI-042` — GameObjectNotFound
 

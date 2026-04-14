@@ -117,6 +117,8 @@ func Execute() error {
 		resp, err = goCmd(subArgs, send)
 	case "component":
 		resp, err = componentCmd(subArgs, send)
+	case "asset":
+		resp, err = assetCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -393,6 +395,14 @@ Components:
   component get go:XXXXXXXX <Type> --index N       Pick Nth instance when multiple attached
   component schema <Type>                          Type schema (requires a live instance)
 
+Assets:
+  asset find [--type Prefab] [--label X] [--name G] [--folder F]   Query project assets
+  asset inspect <path>                              Asset metadata + type-specific details
+  asset dependencies <path> [--recursive]           Direct (or recursive) dependencies
+  asset references <path> [--limit N]               Who references this asset (full scan)
+  asset guid <path>                                 Path -> Unity GUID
+  asset path <guid>                                 Unity GUID -> path
+
 Console:
   console                       Read error & warning logs (default)
   console --lines 20            Limit to N entries
@@ -631,6 +641,60 @@ Notes:
   - Missing type, bad index, or schema-without-instance -> UCI-043.
   - A field path that does not exist -> UCI-011 with the list of top-level
     fields so the agent can pick a valid one.
+`)
+	case "asset":
+		fmt.Print(`Usage: udit asset <find|inspect|dependencies|references|guid|path> [options]
+
+Query project assets. All paths are project-relative (Assets/... or
+Packages/...), all GUIDs are Unity's 32-char hex identifiers.
+
+Subcommands:
+  find                      Query the AssetDatabase. Filters are ANDed and
+                            results are sorted by path.
+    --type <T>              Type filter, e.g. Prefab, Texture2D, Material,
+                            AudioClip, ScriptableObject. Maps to Unity's
+                            't:' filter syntax.
+    --label <L>             Label filter. Maps to 'l:'.
+    --name <glob>           Case-insensitive name glob ('*' wildcard). Applied
+                            after the AssetDatabase filters because Unity's
+                            free-text term is a substring match, not a glob.
+    --folder <F1,F2,...>    Restrict search to these folders (comma-separated).
+    --limit <N>             Max results per page (default 100, max 1000).
+    --offset <N>            Skip first N matches (default 0).
+  inspect <path>            Asset metadata (path, guid, type, labels) plus a
+                            type-specific 'details' block for Prefab, Texture2D,
+                            Material, AudioClip, ScriptableObject, TextAsset.
+                            Other types return details=null with the common
+                            header so agents still get name + guid + type.
+  dependencies <path>       Paths of every asset this one depends on.
+    --recursive             Walk the whole transitive tree. Default is direct
+                            deps only, which matches what Unity's Inspector
+                            shows and is usually what you want.
+  references <path>         Paths of every asset that references this one.
+                            Unity has no reverse-index, so this scans the
+                            entire project — the response includes scan_ms
+                            and scanned_assets so an agent knows the cost.
+    --limit <N>             Max results per page (default 100, max 1000).
+    --offset <N>            Skip first N matches (default 0).
+  guid <path>               Path -> GUID lookup.
+  path <guid>               GUID -> path lookup.
+
+Examples:
+  udit asset find --type Prefab
+  udit asset find --type Texture2D --folder Assets/Art --limit 20
+  udit asset find --label boss --name "*Enemy*"
+  udit asset inspect Assets/Materials/Player.mat
+  udit asset dependencies Assets/Scenes/Main.unity --recursive
+  udit asset references Assets/Prefabs/Enemy.prefab
+  udit asset guid Assets/Scenes/SampleScene.unity
+  udit asset path 8c9cfa26abfee488c85f1582747f6a02
+
+Notes:
+  - Unknown paths or GUIDs -> UCI-040 AssetNotFound (see docs/ERROR_CODES.md).
+  - 'references' cost grows with project size. Use 'dependencies' in reverse
+    when possible, and always set --limit on larger projects.
+  - 'inspect' on a Prefab returns just a top-level summary (root components,
+    child count). Use 'scene open' or 'scene tree' to walk the hierarchy.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

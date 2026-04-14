@@ -46,10 +46,47 @@ namespace UditConnector.Tools.Common
             if (c is Transform t)
                 return DescribeTransform(t);
 
+            var props = WalkProperties(c);
+            return new
+            {
+                type = c.GetType().Name,
+                enabled = (c is Behaviour b) ? (bool?)b.enabled : null,
+                properties = props,
+            };
+        }
+
+        /// <summary>
+        /// Dump any <see cref="UnityEngine.Object"/> (ScriptableObject, Material,
+        /// TextAsset, etc.) into the same {type, properties} shape as
+        /// <see cref="ComponentToObject"/>. No Behaviour-specific `enabled`
+        /// field because non-Component assets do not carry one, and no
+        /// Transform special case because this path is for asset data, not
+        /// scene hierarchy state. Use ComponentToObject for live Components.
+        /// </summary>
+        public static object ObjectToJson(UnityEngine.Object obj)
+        {
+            if (obj == null)
+            {
+                return new
+                {
+                    type = "<Missing Asset>",
+                    properties = new Dictionary<string, object>(),
+                };
+            }
+
+            return new
+            {
+                type = obj.GetType().Name,
+                properties = WalkProperties(obj),
+            };
+        }
+
+        static Dictionary<string, object> WalkProperties(UnityEngine.Object target)
+        {
             var props = new Dictionary<string, object>();
             try
             {
-                using var so = new SerializedObject(c);
+                using var so = new SerializedObject(target);
                 var iter = so.GetIterator();
                 bool enterChildren = true;
                 while (iter.NextVisible(enterChildren))
@@ -61,18 +98,12 @@ namespace UditConnector.Tools.Common
             }
             catch (Exception)
             {
-                // Some built-in components throw during iteration (e.g. certain
+                // Some built-in objects throw during iteration (e.g. certain
                 // render-pipeline internals). Returning whatever we got so far
-                // plus the component type is more useful than propagating an
-                // exception that would abort the whole inspect.
+                // plus the type is more useful than propagating an exception
+                // that would abort the whole inspect.
             }
-
-            return new
-            {
-                type = c.GetType().Name,
-                enabled = (c is Behaviour b) ? (bool?)b.enabled : null,
-                properties = props,
-            };
+            return props;
         }
 
         static object DescribeTransform(Transform t)

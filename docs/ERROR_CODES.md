@@ -17,7 +17,7 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 | `UCI-021` | UnityUpdating | Connector | ⏳ After 2-3s | Asset import in progress |
 | `UCI-030` | ExecCompileError | Connector | ❌ Fix C# code | `udit exec` syntax/semantic error |
 | `UCI-031` | ExecRuntimeError | Connector | ❌ Fix C# logic | `udit exec` threw at runtime |
-| `UCI-040` | AssetNotFound | Connector | ❌ Fix path/GUID | Reserved for Phase 2 (Observe) |
+| `UCI-040` | AssetNotFound | Connector | ❌ Fix path/GUID | `asset inspect`/`dependencies`/`references`/`guid`/`path` with a path or GUID that the AssetDatabase cannot resolve |
 | `UCI-041` | SceneNotFound | Connector | ❌ Fix path | `scene open` with non-existent path |
 | `UCI-042` | GameObjectNotFound | Connector | ❌ Re-scan, then fix ID | `go inspect` / `go path` with stale or unknown stable ID |
 | `UCI-043` | ComponentNotFound | Connector | ❌ Fix type name | `component get` / `component schema` where the GameObject has no component of that type, or no such type exists in loaded assemblies |
@@ -101,10 +101,12 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 
 ### `UCI-040` / `UCI-041` — Asset/Scene Not Found
 
-**Origin**: Connector (`ManageScene` emits 041; 040 reserved for `AssetTools`)
-**Triggers when**: `udit scene open <path>` with a path that does not map to a scene asset. `UCI-040` is reserved for `asset find/inspect` once those commands ship.
+**Origin**: Connector (`ManageAsset` emits 040, `ManageScene` emits 041)
+**Triggers when**: A path or GUID cannot be resolved by the AssetDatabase.
+- `UCI-040` — `asset inspect`, `asset dependencies`, `asset references`, `asset guid` with an unknown path; `asset path` with an unknown GUID.
+- `UCI-041` — `scene open <path>` with a path that does not exist.
 
-**Agent action**: Verify the path. `udit scene list` returns every scene's path and GUID — use it to discover the correct identifier.
+**Agent action**: Verify the identifier. Run `udit asset find` (for UCI-040) or `udit scene list` (for UCI-041) to discover valid paths/GUIDs. Paths are project-relative and start with `Assets/` or `Packages/`. GUIDs are 32 hex chars (no dashes).
 
 ### `UCI-042` — GameObjectNotFound
 

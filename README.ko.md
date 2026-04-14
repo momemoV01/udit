@@ -277,6 +277,39 @@ udit component schema MyGame.PlayerController
 - 해당 타입이 GO에 없음, `--index` 범위 밖, `schema`에 live 인스턴스 없음 → `UCI-043`. 메시지가 실제 붙은 타입 목록 또는 인스턴스 수를 알려줌.
 - 필드 경로 없음 → `UCI-011` + 유효한 top-level 필드 목록.
 
+### 에셋 쿼리
+
+AssetDatabase 조회 — Prefab, Texture, Material, Script, Unity가 인덱싱하는 모든 것. 경로는 프로젝트 상대(`Assets/...` 또는 `Packages/...`), GUID는 Unity의 32자 hex.
+
+```bash
+# 타입 필터 (Unity의 't:' 문법으로 매핑), 레이블, 이름 glob, 폴더 스코프
+udit asset find --type Prefab
+udit asset find --type Texture2D --folder Assets/Art --limit 20
+udit asset find --label boss --name "*Enemy*"
+
+# 메타데이터 + 타입별 'details' 블록
+# (Texture2D: 크기+포맷, Material: 쉐이더+프로퍼티,
+#  Prefab: 루트 컴포넌트, AudioClip: 길이+채널 등)
+udit asset inspect Assets/Materials/Player.mat
+
+# 이 에셋이 의존하는 것들. 기본은 direct only, --recursive 로 transitive.
+udit asset dependencies Assets/Scenes/Main.unity
+udit asset dependencies Assets/Scenes/Main.unity --recursive
+
+# 이 에셋을 참조하는 것들. Unity는 역인덱스 없어서 프로젝트 전체 스캔.
+# 응답에 scan_ms + scanned_assets 포함 — 에이전트가 비용 인지 가능.
+# 큰 프로젝트에서는 반드시 --limit 설정.
+udit asset references Assets/Prefabs/Enemy.prefab --limit 50
+
+# GUID / path 왕복
+udit asset guid Assets/Scenes/SampleScene.unity
+udit asset path 8c9cfa26abfee488c85f1582747f6a02
+```
+
+`inspect`는 Prefab, Texture2D, Material, AudioClip, ScriptableObject, TextAsset에 타입별 details 블록 제공. 다른 타입도 공통 헤더(`path`, `guid`, `name`, `type`, `labels`)는 반환하고 `details: null` 이므로 에이전트가 최소한 타입으로 분기 가능.
+
+알 수 없는 path/GUID는 `UCI-040 AssetNotFound` — `asset find`로 먼저 식별자를 검증.
+
 ### 콘솔 로그
 
 ```bash

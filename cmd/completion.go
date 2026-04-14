@@ -58,7 +58,7 @@ _udit_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands="completion component console editor exec go help list menu profiler reserialize scene screenshot status test update version"
+    local commands="asset completion component console editor exec go help list menu profiler reserialize scene screenshot status test update version"
     local globals="--port --project --timeout --json --help"
 
     case "$prev" in
@@ -75,6 +75,9 @@ _udit_complete() {
             return ;;
         component)
             COMPREPLY=( $(compgen -W "list get schema" -- "$cur") )
+            return ;;
+        asset)
+            COMPREPLY=( $(compgen -W "find inspect dependencies references guid path" -- "$cur") )
             return ;;
         profiler)
             COMPREPLY=( $(compgen -W "hierarchy enable disable status clear" -- "$cur") )
@@ -122,6 +125,10 @@ _udit() {
             subs=('list:Enumerate components' 'get:Dump component or field' 'schema:Type schema')
             _describe 'component action' subs
             return ;;
+        asset)
+            subs=('find:Query assets' 'inspect:Asset metadata' 'dependencies:List deps' 'references:Reverse deps' 'guid:Path to GUID' 'path:GUID to path')
+            _describe 'asset action' subs
+            return ;;
         profiler)
             subs=('hierarchy:Sample hierarchy' 'enable:Start recording' 'disable:Stop recording' 'status:Show state' 'clear:Clear frames')
             _describe 'profiler action' subs
@@ -137,6 +144,7 @@ _udit() {
         'scene:List/open/save/reload scenes'
         'go:Query GameObjects (find/inspect/path)'
         'component:Read component values + schemas'
+        'asset:Query assets (find/inspect/deps/refs/guid/path)'
         'console:Read console logs'
         'exec:Execute C# code'
         'list:List all registered tools'
@@ -179,7 +187,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @(
-        'editor', 'scene', 'go', 'component', 'console', 'exec', 'list', 'status', 'test',
+        'editor', 'scene', 'go', 'component', 'asset', 'console', 'exec', 'list', 'status', 'test',
         'profiler', 'screenshot', 'reserialize', 'menu',
         'update', 'help', 'version', 'completion'
     )
@@ -193,6 +201,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
         'scene'      { @('list', 'active', 'open', 'save', 'reload', 'tree') }
         'go'         { @('find', 'inspect', 'path') }
         'component'  { @('list', 'get', 'schema') }
+        'asset'      { @('find', 'inspect', 'dependencies', 'references', 'guid', 'path') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
         'completion' { @('bash', 'zsh', 'powershell', 'fish') }
         '--port'     { @() }
@@ -225,6 +234,7 @@ complete -c udit -n "__fish_use_subcommand" -a "editor"      -d "Play/stop/pause
 complete -c udit -n "__fish_use_subcommand" -a "scene"       -d "List/open/save/reload scenes"
 complete -c udit -n "__fish_use_subcommand" -a "go"          -d "Query GameObjects (find/inspect/path)"
 complete -c udit -n "__fish_use_subcommand" -a "component"   -d "Read component values + schemas"
+complete -c udit -n "__fish_use_subcommand" -a "asset"       -d "Query assets (find/inspect/deps/refs/guid/path)"
 complete -c udit -n "__fish_use_subcommand" -a "console"     -d "Read console logs"
 complete -c udit -n "__fish_use_subcommand" -a "exec"        -d "Execute C# code"
 complete -c udit -n "__fish_use_subcommand" -a "list"        -d "List registered tools"
@@ -242,6 +252,7 @@ complete -c udit -n "__fish_seen_subcommand_from editor"     -a "play stop pause
 complete -c udit -n "__fish_seen_subcommand_from scene"      -a "list active open save reload tree"
 complete -c udit -n "__fish_seen_subcommand_from go"         -a "find inspect path"
 complete -c udit -n "__fish_seen_subcommand_from component"  -a "list get schema"
+complete -c udit -n "__fish_seen_subcommand_from asset"      -a "find inspect dependencies references guid path"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"
 complete -c udit -n "__fish_seen_subcommand_from completion" -a "bash zsh powershell fish"
 
