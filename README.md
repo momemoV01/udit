@@ -1,5 +1,7 @@
 # udit
 
+[English](README.md) | [한국어](README.ko.md)
+
 > Unity editor, from the command line. Built for AI agents, works with anything.
 >
 > Udit (उदित) — Sanskrit for *risen*. A fork of [unity-cli](https://github.com/youngwoocho02/unity-cli) by [DevBookOfArray](https://github.com/youngwoocho02), extended for agent-first game development workflows.

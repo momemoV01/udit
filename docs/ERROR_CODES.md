@@ -1,5 +1,7 @@
 # Error Codes (UCI-xxx)
 
+[English](ERROR_CODES.md) | [한국어](ERROR_CODES.ko.md)
+
 Stable identifiers in `--json` responses. Agents should branch on these instead of parsing English message text. Codes are mapped from both the Go CLI side (UCI-001..003 — connectivity) and the Unity Connector side (UCI-010+ — request/runtime).
 
 ## Quick Reference

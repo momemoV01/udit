@@ -74,7 +74,29 @@ CI skips these since Unity is not available.
 CLI option, command, parameter를 수정하면 관련된 모든 곳을 함께 반영한다:
 - C# tool (Parameters class, HandleCommand)
 - Go help text (root.go의 overview + command별 detailed help)
-- README.md
+- README.md **+ README.ko.md** (한글 문서 정책 — 아래 참고)
+
+### 한글 문서 정책
+
+사용자나 에이전트가 읽을 가능성이 있는 문서는 **영어 + 한글 한 쌍**으로 유지한다:
+
+| 영문 (정본) | 한글 (번역) | 누가 읽나 |
+|---|---|---|
+| `README.md` | `README.ko.md` | 외부 사용자, 첫 인상 |
+| `docs/ROADMAP.md` | `docs/ROADMAP.ko.md` | 본인, 협업자 |
+| `docs/ERROR_CODES.md` | `docs/ERROR_CODES.ko.md` | 에이전트, 디버깅 사용자 |
+| 향후 신규 가이드 (`INSTALL.md` 등) | `*.ko.md` | 동일 |
+
+**영어 단일 유지** (한글본 만들지 않음):
+- `CHANGELOG.md` — 변경 이력 표준 관행
+- `NOTICE.md`, `LICENSE` — 법적 텍스트, 영어 원본만 효력
+- `CLAUDE.md` — 한국어 주석 섞여 있지만 단일 파일 (개발자용)
+
+**번역 규칙**:
+- 영문이 정본 (canonical). 한글본은 번역.
+- 영문 변경 시 한글본도 같은 PR/commit에 동기화. 누락 방지.
+- 코드 블록, 변수명, 명령어, GUID는 그대로.
+- 인용/링크는 한글 문장 안에 자연스럽게 (괄호 처리 가능).
 
 ### 버전 관리
 
