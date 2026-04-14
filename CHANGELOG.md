@@ -4,6 +4,152 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-15
+
+First release of Phase 3 (**Mutate**). After this release agents can
+build and edit scenes without dropping into `exec` — the full read +
+write loop is covered for GameObjects and their components. The next
+minor release (v0.4.x) will layer on prefab operations, asset-level
+mutations, and multi-command transactions; this release intentionally
+ships the bottom half of that stack so the basic authoring loop
+(`create GO → addComponent → setField`) is out the door while the
+design of the rest gets real feedback.
+
+Connector bumped to `0.4.0` — two substantial new action blocks in C#
+plus the Unity 6 API cleanup described below.
+
+### Added
+
+**`go` mutation namespace (5 subcommands).** Extends the existing
+`manage_game_object` tool with write operations. Every action is
+routed through Unity Undo so Ctrl+Z in the Editor reverses an agent's
+change the same way it reverses a human's Inspector edit, and every
+action accepts `--dry-run` to preview the impact without touching the
+scene.
+
+- `go create --name N [--parent go:P] [--pos x,y,z]` — spawns a
+  GameObject and returns its fresh stable ID. Without `--parent` the
+  GO attaches at scene root.
+- `go destroy <go:ID>` — destroys a GameObject and every descendant.
+  Response reports `children_affected` so the caller knows the cascade
+  size up front.
+- `go move <go:ID> [--parent go:P]` — reparents a GameObject. Omit
+  `--parent` to move back to the scene root. Cycle-creating reparents
+  (parent under self or descendant) are rejected with `UCI-011`
+  *before* the transform changes so Unity cannot crash on the edge.
+- `go rename <go:ID> <newname>` — renames in place.
+- `go setactive <go:ID> --active true|false` — toggles `activeSelf`.
+  Already-in-state calls return success with `no_change: true`,
+  deliberately skipping the Undo group so Ctrl+Z doesn't have to
+  pop over a no-op.
+
+**`component` mutation namespace (4 subcommands).** Extends
+`manage_component`. Field names match what `component get` emits, so
+the read/write vocabulary is unified — an agent that can describe a
+component can also edit it using the same identifiers.
+
+- `component add <go:ID> --type <T>` — `Undo.AddComponent(go, type)`.
+  Respects `DisallowMultipleComponent` and `RequireComponent`. Rejects
+  Transform up front ("Every GameObject already has a Transform")
+  with a clearer message than `AddComponent` would give.
+- `component remove <go:ID> <T> [--index N]` — removes one component.
+  Transform is blocked — the error message redirects to `go destroy`.
+- `component set <go:ID> <T> <field> <value> [--index N]` — writes one
+  field. The value is parsed based on the target's
+  `SerializedPropertyType`. Transform's virtual fields (`position`,
+  `local_position`, `rotation_euler`, `local_rotation_euler`,
+  `local_scale`) set world-space values directly via Transform API so
+  the caller does not need to know about `m_LocalPosition`.
+- `component copy <go:SRC> <T> <go:DST> [--index N]` —
+  `EditorUtility.CopySerialized`. If the destination lacks the type,
+  `Undo.AddComponent` runs first; the observable end state is a
+  single matching component with the source's values either way.
+
+**Value parser for `component set`.** Parses a single string into the
+target field's Unity type:
+
+| SerializedPropertyType | Input |
+| --- | --- |
+| Integer / LayerMask / ArraySize / Character | `"42"` |
+| Boolean | `"true"` / `"false"` / `"1"` / `"0"` / `"yes"` / `"no"` / `"on"` / `"off"` |
+| Float | `"3.14"` |
+| String | any text |
+| Vector2 / 3 / 4 / Quaternion | comma-separated floats |
+| Color | `"r,g,b[,a]"` in 0–1 range, or `"#RRGGBB[AA]"` |
+| Enum | display name (`"Solid Color"`) or value index |
+
+ObjectReference, AnimationCurve, Gradient, and ManagedReference are
+read-only in v0.4.0 and return `UCI-011` with a "read-only in this
+version" message — these need asset lookup / keyframe parsing / type
+resolution plumbing that fits better in a follow-up slice.
+
+**`--dry-run` on every mutation (cross-cutting).** Both `go` and
+`component` mutations accept `--dry-run`. The response shape matches
+what a real run would return (`would_destroy`, `children_affected`,
+`from`/`to`, etc.) but Unity is not touched. This makes "plan then
+execute" a clean one-flag change instead of two command paths.
+
+**Per-mutation Unity Undo groups.** Every mutation starts with
+`Undo.IncrementCurrentGroup()` + `Undo.SetCurrentGroupName(...)`
+before its first side effect. Unity normally increments the current
+group once per editor tick; without the explicit increment, multiple
+udit commands fired within the same tick can collapse into one group
+and a single Ctrl+Z unwinds a whole agent session at once (or, worse,
+cancels a `create + destroy` pair to a no-op). This was discovered
+during the first live-test of Phase 3.1 and fixed in the same slice.
+Editor's Edit → Undo menu now shows descriptive labels like
+`"udit component set Rigidbody.m_Mass"` for each step.
+
+### Changed
+
+- **Connector bumped to `0.4.0`** (`udit-connector/package.json`).
+  `ManageGameObject` and `ManageComponent` each grew a full mutation
+  block; `SerializedInspect` is unchanged but its output now feeds
+  both the read (`component get`) and write (`component set` field
+  echo) paths symmetrically.
+- **Unity 6 API cleanup.** Several Unity 6 deprecations surfaced
+  during the Phase 3.2 live-test and got fixed together:
+  - `EditorUtility.CopySerialized` returns `void` in Unity 6 (was
+    `bool`). Wrapped in `try`/`catch` so a failure still surfaces as a
+    structured `UCI-011` instead of a 500.
+  - `Object.FindObjectsByType<T>(FindObjectsInactive, FindObjectsSortMode)`
+    is deprecated. Switched `ManageGameObject.Find` to the single-arg
+    overload — we sort by hierarchy path locally anyway, so the sort
+    mode never mattered.
+  - `ShaderUtil.GetPropertyCount/Name/Type` are deprecated in favor of
+    the `Shader` instance methods, and the enum moved from
+    `ShaderUtil.ShaderPropertyType` to
+    `UnityEngine.Rendering.ShaderPropertyType` (with `TexEnv` renamed
+    to `Texture`). `ManageAsset.DescribeMaterial` updated accordingly.
+- **Shell completion** (bash/zsh/powershell/fish) learns the five new
+  `go` subcommands and four new `component` subcommands.
+- **Help text** in `udit --help` gains a GameObject-mutation block and
+  a Component-mutation block; `udit go --help` and
+  `udit component --help` document every new action, the value-parser
+  cheat sheet, and every error code an agent can expect.
+- **README.md / README.ko.md** gain a "GameObject mutation" subsection
+  and a "Component mutation" subsection with the parser cheat sheet,
+  kept in lockstep per the bilingual doc policy.
+
+### Design notes
+
+- **Dry-run + Undo together cover the agent's "are you sure?" space.**
+  Before a destructive call, the agent can check `--dry-run` to see
+  what would change. After a call, Ctrl+Z in the Editor reverses it
+  one logical step at a time. Neither feature alone would be as
+  useful as both together.
+- **Transform virtual fields travel both directions.** `component get
+  go:X Transform position` returns world-space `{x,y,z}`; `component
+  set go:X Transform position 0,10,0` writes world-space by the same
+  name. Agents do not have to learn `m_LocalPosition` for the common
+  case. Local-space variants are available under their own names
+  (`local_position` etc.).
+- **Phase 3 split (3a ships now, 3b follows).** `go` +  `component`
+  mutation alone is enough to unblock `create GO → addComponent →
+  setField` — the authoring loop most agents need. `prefab`, `asset`
+  mutation, and transactions (3b) land in the next patch so their
+  design can benefit from real feedback on 3a.
+
 ## [0.3.1] - 2026-04-15
 
 Same-day patch closing Phase 2b. Where v0.3.0 covered scene + go, this

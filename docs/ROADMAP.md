@@ -3,7 +3,7 @@
 [English](ROADMAP.md) | [한국어](ROADMAP.ko.md)
 
 > Living plan. 버전/우선순위는 실사용 피드백에 따라 조정됨.
-> Last updated: 2026-04-15 (v0.3.1 release)
+> Last updated: 2026-04-15 (v0.4.0 release)
 
 ## Vision
 
@@ -36,12 +36,15 @@
 | 1 | `v0.2.0` | **Foundation** | ✅ **Done** | 버그 + JSON + 설정 파일 |
 | 2a | `v0.3.0` | **Observe — Scene & GO** | ✅ **Done** | Stable ID + `scene` + `go` |
 | 2b | `v0.3.1` | **Observe — Component & Asset** | ✅ **Done** | `component` + `asset` |
-| 3 | `v0.4.0` | **Mutate** | 📋 Planned (다음) | GO/컴포넌트/prefab 쓰기 |
+| 3a | `v0.4.0` | **Mutate — GO & Component** | ✅ **Done** | `go create/destroy/move/rename/setactive` + `component add/remove/set/copy` + Undo + `--dry-run` |
+| 3b | `v0.4.x` | Mutate — Prefab & Asset + Transactions | 📋 Planned (다음) | `prefab instantiate/unpack/apply`, `asset create/move/delete/label`, multi-command Undo groups |
 | 4 | `v0.5.0` | **Automate** | 📋 Planned | 빌드/패키지 관리 |
 | 5 | `v0.6.0` | **Stream** | 📋 Planned | watch + log tail |
 | 6 | `v1.0.0` | **Polish & Freeze** | 📋 Planned | 테스트/문서/API 동결 |
 
 Phase 2는 원래 단일 릴리스였으나 실제 작업하며 **scene + go** 블록이 에이전트 체감 가치 라인(`exec` 의존도 급감)을 이미 넘는 것을 확인해 2a/2b로 분할. 2a를 v0.3.0, 2b를 v0.3.1로 짧게 끊어 출시 — 두 릴리스 모두 같은 4월 15일에 일어났지만 분리한 이유는 (i) v0.3.0 출시 직후 Public 전환 문제 발견과 분리, (ii) v0.3.1에서 추가된 commands가 의미 있는 단위로 묶여서.
+
+Phase 3도 같은 이유로 3a/3b 분할. **GO + Component mutation (3a)** 만으로 에이전트가 씬을 새로 구성할 수 있는 기본 loop(`create GO → addComponent → setField`)가 완성되어, 피드백 받으며 prefab/asset mutation (3b)를 증분 추가하는 게 실사용 스펙 정확도에 유리.
 
 ---
 
@@ -300,38 +303,73 @@ udit-connector/Editor/Tools/
 
 ---
 
-## Phase 3: v0.4.0 — Mutate
+## Phase 3a: v0.4.0 — Mutate (GameObject & Component)
 
-**목표**: 에이전트가 씬/에셋을 **변경**. "AI 게임 개발"의 분기점.
+**완료일**: 2026-04-15
 
-### 3.1 GameObject 생성/삭제/수정
+**목표**: 에이전트가 씬을 **쓸 수** 있게. 기본 loop `create GO → addComponent → setField` 완성 — "AI 게임 개발"의 분기점.
 
-```bash
-udit go create --name "Boss" [--parent go:a1b2c3d4] [--pos 0,1,0]
-udit go destroy go:5678abcd
-udit go move go:5678abcd --parent go:a1b2c3d4
-udit go rename go:5678abcd "NewName"
-udit go setactive go:5678abcd --active false
-```
-
-### 3.2 컴포넌트 조작
+### 3.1 GameObject 생성/삭제/수정 ✅
 
 ```bash
-udit component add go:a1b2c3d4 --type Rigidbody
-udit component remove go:a1b2c3d4 --type Rigidbody
-udit component set go:a1b2c3d4 Transform position "0,1,0"
-udit component set go:a1b2c3d4 Rigidbody mass 5.5
-udit component copy go:a1b2c3d4 Transform go:5678abcd
+udit go create --name "Boss" [--parent go:XXX] [--pos x,y,z] [--dry-run]
+udit go destroy go:XXX [--dry-run]
+udit go move go:XXX [--parent go:YYY] [--dry-run]      # YYY 생략 시 root로
+udit go rename go:XXX <newname> [--dry-run]
+udit go setactive go:XXX --active true|false [--dry-run]
 ```
 
-**안전장치**: 모든 mutation 전에 `Undo.RecordObject` 자동 등록 → 사용자가 Unity에서 Ctrl+Z 가능.
+**Undo 통합**: 각 mutation마다 `Undo.IncrementCurrentGroup()` + `Undo.SetCurrentGroupName(...)` + 전용 Undo API (`RegisterCreatedObjectUndo`, `DestroyObjectImmediate`, `SetTransformParent`, `RecordObject`). 실시간 드러그핏 중 "Undo가 여러 op을 묶어 취소한다" 버그를 발견하고 명시적 group-increment로 해결. 결과: Editor의 Edit → Undo 메뉴에 단계별로 descriptive 이름이 표시되어 Ctrl+Z가 한 번에 한 논리 연산씩 되돌림.
+
+**Cycle guard**: `go move`는 reparent 후보를 자손 체인으로 scan해서 자기 자신/자손 아래로 이동하는 케이스를 UCI-011로 사전 거부 — Unity가 crash할 수 있는 경로를 CLI에서 막음.
+
+### 3.2 컴포넌트 조작 ✅
+
+```bash
+udit component add go:XXX --type Rigidbody [--dry-run]
+udit component remove go:XXX Rigidbody [--index N] [--dry-run]
+udit component set go:XXX Type field value [--index N] [--dry-run]
+udit component copy go:SRC Type go:DST [--index N] [--dry-run]
+```
+
+**값 파서** (set): SerializedPropertyType 별 전용 parse. Integer/LayerMask/ArraySize/Character, Boolean (true/false/1/0/yes/no/on/off), Float, String, Vector2/3/4/Quaternion (comma-separated), Color (`"r,g,b[,a]"` 또는 `"#RRGGBB[AA]"`), Enum (display name 또는 value index). ObjectReference/Curve/Gradient/ManagedReference는 이 버전에서 **읽기 전용** — UCI-011에 명확한 메시지.
+
+**Transform virtual fields**: `component set`에서도 `position`/`local_position`/`rotation_euler`/`local_rotation_euler`/`local_scale` 이름이 `component get`과 동일하게 작동 (Transform API를 직접 호출해 world-space 처리). m_LocalPosition 등 내부 필드 이름 몰라도 됨.
+
+**안전장치**:
+- 모든 mutation Unity Undo 통합 (`RecordObject` + `DestroyObjectImmediate` + `AddComponent` Undo 등록)
+- Transform remove → UCI-011 "use `go destroy` instead"
+- Transform add → UCI-011 "already has one"
+- 없는 field → UCI-011 + **전체 유효 필드 이름 목록** (에이전트 자가 교정)
+- 타입 mismatch → UCI-011 + 기대 타입 이름 명시
+
+### 3.5 Dry-run (cross-cutting) ✅
+
+모든 mutation이 `--dry-run` 플래그 지원. 응답 shape은 실제 실행 시와 동일 (`would_destroy`, `children_affected`, `from`/`to` 등) 하지만 사이드이펙트 없음. 에이전트가 commit 전 영향 범위 분기 가능.
+
+### Phase 3a 성공 기준
+
+- [x] 에이전트가 `exec` 없이 **씬 구성 기본 loop** 완수 (create GO, addComponent, setField)
+- [x] 모든 변경이 Unity Undo로 단계별 되돌림 가능
+- [x] Dry-run 응답 shape = 실제 실행 응답 shape
+- [x] Unity 6 deprecation 정리 (FindObjectsByType, ShaderUtil, CopySerialized)
+
+**완료 commit 체인** (2026-04-15, v0.4.0):
+- `7451c77` feat(go): GameObject mutation (create/destroy/move/rename/setactive)
+- `da9a282` feat(component): component mutation (add/remove/set/copy)
+
+---
+
+## Phase 3b: v0.4.x — Mutate (Prefab & Asset + Transactions)
+
+**목표**: 3a의 기본 loop를 프로젝트 구조 관리까지 확장 + 복합 변경 원자성.
 
 ### 3.3 Prefab 인스턴싱
 
 ```bash
-udit prefab instantiate Assets/Prefabs/Enemy.prefab --pos 5,0,0 [--parent go:a1b2c3d4]
-udit prefab unpack go:5678abcd
-udit prefab apply go:5678abcd
+udit prefab instantiate Assets/Prefabs/Enemy.prefab --pos 5,0,0 [--parent go:XXX]
+udit prefab unpack go:XXX
+udit prefab apply go:XXX
 udit prefab find-instances Assets/Prefabs/Enemy.prefab
 ```
 
@@ -344,16 +382,7 @@ udit asset delete Assets/Unused.prefab
 udit asset label add Assets/Prefabs/Boss.prefab boss_content
 ```
 
-### 3.5 Dry-run 모드 (필수)
-
-```bash
-udit go destroy go:5678abcd --dry-run
-# → {"would_destroy": "Boss/Minion1", "children_affected": 3, "references_in_scene": []}
-```
-
-에이전트가 **실행 전 영향 범위**를 확인 가능.
-
-### 3.6 트랜잭션 (중장기)
+### 3.6 트랜잭션
 
 ```bash
 udit tx begin
@@ -362,13 +391,12 @@ udit component add go:... Rigidbody
 udit tx commit   # 또는 udit tx rollback
 ```
 
-구현: `Undo.CollapseUndoOperations`로 여러 변경을 단일 Undo 엔트리로.
+구현: `Undo.CollapseUndoOperations`로 여러 udit 명령을 단일 Undo 엔트리로 묶음. 현재는 각 mutation이 독립 Undo group이라 복합 변경 취소에 N번 Ctrl+Z 필요 — 트랜잭션 도입 시 1번으로 가능.
 
-### Phase 3 성공 기준
+### Phase 3b 성공 기준
 
-- [ ] 에이전트가 **씬 편집 시나리오** end-to-end 완수
-- [ ] 모든 변경이 Unity Undo로 되돌림 가능
-- [ ] Dry-run이 실제 실행과 정확히 일치
+- [ ] `prefab instantiate`로 생성된 인스턴스가 stable ID로 추적 가능
+- [ ] `asset move/delete`가 dependencies 영향 범위를 dry-run으로 표시
 - [ ] 트랜잭션 rollback 시 상태 완벽 복구
 
 ---
@@ -678,6 +706,13 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | `asset references`는 전체 스캔 + `scan_ms` 노출 | Unity는 reverse dependency 인덱스를 제공하지 않아 정직한 구현은 모든 에셋의 GetDependencies를 도는 O(n) scan. 이를 숨기지 않고 응답에 `scanned_assets` + `scan_ms` 필드를 포함시켜 에이전트가 비용을 인지하고 `--limit` 사용을 결정할 수 있게 함. 12k 에셋 프로젝트에서 ~1.8초 측정 — 큰 프로젝트에서는 캐싱 또는 인덱싱 추가 검토 |
 | 2026-04-15 | `asset inspect`에 타입별 detail handler 둠 (6 types) | SerializedObject 한 가지로 모두 처리하면 Material의 ShaderUtil 메타 / Texture2D의 format/mip / AudioClip의 freq 등 타입 고유 정보를 놓침. switch에 핸들러 6개(Texture2D/Material/AudioClip/Prefab/ScriptableObject/TextAsset) 두고 그 외는 details:null + common header. 새 타입 추가 시 핸들러 한 개만 추가 |
 | 2026-04-15 | Phase 2 분할 결정 후 v0.3.0 + v0.3.1을 같은 날 출시 | 원래 2a 출시 후 사용 피드백 받고 2b 진행 계획이었으나, 2a 직후 dog-food 단계에서 (i) Public 전환 미결로 `udit update` 못 쓰는 마찰 발견, (ii) component/asset도 SerializedInspect 재활용으로 빠르게 마무리 가능함 확인. Day-1 patch로 2b 묶어 출시 |
+| 2026-04-15 | 모든 mutation은 `Undo.IncrementCurrentGroup()` 명시적 호출 | Unity는 기본적으로 editor tick마다 Undo group을 자동 증분하지만, udit처럼 HTTP로 연속 호출되는 경우 multiple 명령이 같은 tick에 묶여 한 group에 들어갈 수 있음. 결과: `create + destroy` 한 쌍이 같은 group에 묶이면 단일 PerformUndo가 둘 다 취소해 net 효과 0. slice 6 live-test 중 발견 후 모든 mutation 시작에 `Undo.IncrementCurrentGroup() + SetCurrentGroupName(...)` 삽입해 해결. 부산물로 Editor의 Edit → Undo 메뉴에 `"udit go destroy 'Boss'"` 식 설명적 레이블 표시 |
+| 2026-04-15 | `--dry-run`을 Phase 3 전체에 cross-cutting으로 | ROADMAP 3.5에서 따로 언급되어 있었지만, 별도 feature로 붙이는 대신 **모든 mutation action 안에 uniformly 통합**. Go CLI가 `--dry-run` → `dry_run: true` 매핑, 각 C# action이 첫 side-effect 전에 분기. 응답 shape은 실제 실행 시와 동일 필드(`would_destroy`, `from`/`to` 등)를 갖되 mutation만 skip → 에이전트가 preview/commit을 한 shape으로 처리 가능 |
+| 2026-04-15 | `component set` 값 파서는 SerializedPropertyType로 분기 | JSON-typed value (숫자/문자열/객체) 대신 **모든 값을 문자열로** 받아 target field의 `SerializedPropertyType`에 따라 파싱. 장점: (i) CLI argv가 자연스럽게 문자열 → 추가 escape 없음, (ii) 같은 `"0,5,0"`이 Vector2/3/4 타겟에 따라 다르게 해석됨, (iii) Color `"#FF8800"` 같은 관례적 포맷 허용. 단점: field가 없는 경우 타입 추론 불가해서 `FindProperty` 먼저 한 후 파싱 — 그만큼 error path에 타입 정보 풍부하게 노출 가능 |
+| 2026-04-15 | Transform `position`/`local_position` 등을 `component set`에서 virtual field로 | `SerializedObject`는 `m_LocalPosition`만 노출하지만, `component get`에서 Transform 특별 처리로 world 좌표(`position`) 등을 `{x,y,z}` 형태로 반환했음. set에서도 **같은 이름 지원** 해야 read/write vocabulary 일관성 유지. 구현: `IsTransformVirtualField(name)` → Transform API 직접 호출 (`t.position = ...`, `t.localEulerAngles = ...`). m_LocalPosition 기저 필드는 여전히 SerializedObject로 접근 가능 |
+| 2026-04-15 | `component set` v1에서 ObjectReference/Curve/Gradient/ManagedReference는 read-only | 이 타입들은 set이 단순 파싱 이상 필요 — ObjectReference는 asset 경로 resolve + type check, Curve는 keyframe parse, ManagedReference는 runtime 타입 resolve. slice 7 범위에서 다 넣으면 C# 600+ 줄 되고 value-parser test suite도 비대해짐. MVP는 primitives + Vector/Color/Enum까지 cover하고 나머지는 명확한 UCI-011 + "read-only in this version" 메시지. 실사용 feedback 받은 뒤 v0.4.x에서 증분 |
+| 2026-04-15 | Phase 3도 3a/3b 분할 — v0.4.0은 GO + Component만 | Phase 2와 동일 근거. **GO + Component mutation (3a)** 만으로 에이전트가 씬 구성의 기본 loop (`create GO → addComponent → setField`) 실행 가능 = 에이전트 체감 가치 라인. Prefab/Asset mutation (3b)은 프로젝트 구조 관리에 가까워 우선순위 낮음. 3a 출시 후 실사용 피드백으로 3b 스펙 세밀화 |
+| 2026-04-15 | Unity 6 deprecation 정리 (FindObjectsByType/ShaderUtil/CopySerialized) | slice 7 live-test 중 발견. `EditorUtility.CopySerialized`는 반환 타입이 bool → void로 바뀌어 컴파일 에러 CS0023. `FindObjectsByType<T>(FindObjectsInactive, FindObjectsSortMode)` 오버로드는 deprecated — 단일 인자 오버로드 사용 (udit은 hierarchy path로 직접 sort 하므로 SortMode 무관). `ShaderUtil.GetPropertyCount/Name/Type`은 `Shader` 인스턴스 메서드로, enum도 `UnityEngine.Rendering.ShaderPropertyType`(TexEnv → Texture)로 이전 |
 
 ---
 
@@ -705,6 +740,9 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] **v0.3.0 태그 push + Release 검증** (2026-04-15)
 - [x] Phase 2b 착수 — component + asset (2026-04-15)
 - [x] **v0.3.1 태그 push + Release 검증** (2026-04-15)
+- [x] Phase 3a 착수 — GO + Component mutation + Undo + dry-run (2026-04-15)
+- [x] **v0.4.0 태그 push + Release 검증** (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
-- [ ] **Phase 3 (Mutate) 착수** — `go create/destroy/move/rename/setactive`, `component add/remove/set/copy`, `prefab instantiate/unpack/apply`, `asset create/move/delete/label`, dry-run, transactions
+- [ ] **Phase 3b** — `prefab instantiate/unpack/apply`, `asset create/move/delete/label`, transactions (`udit tx begin/commit/rollback`)
+- [ ] `component set`에서 ObjectReference/Curve/Gradient/ManagedReference 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)
