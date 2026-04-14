@@ -121,6 +121,8 @@ func Execute() error {
 		resp, err = assetCmd(subArgs, send)
 	case "prefab":
 		resp, err = prefabCmd(subArgs, send)
+	case "tx":
+		resp, err = txCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -425,6 +427,12 @@ Prefabs:
   prefab unpack go:XXXXXXXX [--mode root|completely]        Convert instance -> plain GO
   prefab apply go:XXXXXXXX                                  Commit overrides to asset
   prefab find-instances <path>                              List scene instances
+
+Transactions:
+  tx begin [--name "My change"]    Start grouping mutations into one Undo entry
+  tx commit [--name "..."]         Merge all mutations since begin into one group
+  tx rollback                      Revert every mutation since begin
+  tx status                        Report whether a transaction is active
 
 Console:
   console                       Read error & warning logs (default)
@@ -868,6 +876,60 @@ Notes:
     "not a prefab instance".
   - Mutations are blocked in play mode and register with Unity Undo;
     Ctrl+Z in the Editor reverses each op independently.
+`)
+	case "tx", "transaction":
+		fmt.Print(`Usage: udit tx <begin|commit|rollback|status> [options]
+
+Group multiple mutations into a single Unity Undo entry. Without a
+transaction, every mutation (go create, component set, prefab
+instantiate, ...) is its own Undo group — reversing a multi-step agent
+change takes N Ctrl+Z's. Inside a transaction, commit collapses all of
+them into one group; rollback reverts the whole set in place.
+
+Subcommands:
+  begin [--name <label>]
+      Start a transaction. Captures the current Unity Undo group index.
+      Any subsequent mutation goes into the same logical transaction.
+      --name sets the label that appears in Edit → Undo after commit
+      (default "udit transaction").
+
+  commit [--name <label>]
+      Merges every Undo sub-group created since begin into one group
+      via Undo.CollapseUndoOperations. Agent can override the label one
+      last time with --name — handy when the final description of the
+      change only crystallises after the work is done.
+
+  rollback
+      Undoes every mutation made since begin via
+      Undo.RevertAllDownToGroup, returning the scene to its pre-begin
+      state.
+
+  status
+      Reports whether a transaction is active. Response has
+      { active: bool, group, name, duration_ms } when active, and just
+      { active: false } when not.
+
+Constraints:
+  - One transaction at a time per Unity instance. begin during an
+    active tx returns UCI-011 with the existing transaction's name.
+  - State is torn down on domain reload (script compile). A reload
+    mid-transaction leaves partial mutations on the Undo stack but
+    drops the transaction handle — tx status will report "no active"
+    afterward, and a fresh begin starts a new transaction.
+  - Mutations are blocked in play mode regardless of transaction state.
+
+Examples:
+  udit tx begin --name "Spawn boss setup"
+  udit go create --name Boss
+  udit component add go:abcd1234 --type Rigidbody
+  udit component set go:abcd1234 Rigidbody m_Mass 5.5
+  udit tx commit                               # Ctrl+Z in Editor now reverses all 3 at once
+
+  # Mid-transaction rollback
+  udit tx begin --name "Try a layout"
+  udit go create --name Candidate
+  udit go move go:abcd1234 --parent go:5678abcd
+  udit tx rollback                             # every change since begin is undone
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

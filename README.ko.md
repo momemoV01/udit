@@ -460,6 +460,35 @@ udit prefab find-instances Assets/Prefabs/Enemy.prefab
 - GameObject 에셋이지만 prefab이 아님 (예: 날것의 모델) → `UCI-011`.
 - `unpack`/`apply`에 prefab 인스턴스가 아닌 GO → `UCI-011`.
 
+### 트랜잭션
+
+트랜잭션 없이는 모든 mutation (`go create`, `component set`, `prefab instantiate`, ...)이 자기만의 Unity Undo 그룹을 만들어서, 다단계 에이전트 변경을 되돌리려면 Ctrl+Z를 N번 눌러야 한다. 트랜잭션 안에서 `commit`하면 `begin` 이후의 모든 mutation이 하나의 Undo 엔트리로 합쳐지고, Editor에서 Ctrl+Z 한 번으로 전체가 reverse된다.
+
+```bash
+# Single-Undo batch
+udit tx begin --name "Spawn boss setup"
+udit go create --name Boss
+udit component add go:abcd1234 --type Rigidbody
+udit component set go:abcd1234 Rigidbody m_Mass 5.5
+udit tx commit                       # Ctrl+Z 한 번으로 3개 변경 모두 되돌림
+
+# 작업 중간 revert
+udit tx begin --name "Try a layout"
+udit go create --name Candidate
+udit go move go:abcd1234 --parent go:5678abcd
+udit tx rollback                     # begin 이후 모든 변경 되감기
+
+# 현재 상태 확인
+udit tx status
+```
+
+구현: `begin`은 현재 Unity Undo 그룹 인덱스를 캡처, `commit`은 `Undo.CollapseUndoOperations(savedGroup)`, `rollback`은 `Undo.RevertAllDownToGroup(savedGroup)`. commit 후 트랜잭션 이름이 Edit → Undo에 표시되어, 프로젝트에 나중에 합류하는 사람이 "Undo udit go create 'Boss'" 대신 "Undo Spawn boss setup"을 봄.
+
+알아둘 제약:
+- **Unity 인스턴스당 한 개의 트랜잭션만.** Undo 스택은 전역이라 동시에 한 트랜잭션만 가능. 활성 tx가 있는 상태에서 `begin`하면 기존 트랜잭션의 이름 + 경과 시간과 함께 `UCI-011` 반환.
+- **도메인 리로드가 핸들을 지움.** 스크립트 재컴파일은 connector static 상태를 내리므로, 트랜잭션 중간에 리로드가 일어나면 부분 mutation은 Undo 스택에 남되 트랜잭션 핸들 자체는 사라진다. `tx status`가 "no active"로 바뀌므로, 계속 묶고 싶었으면 새로 `begin`.
+- **AssetDatabase 변경은 참여 안 함.** `asset create/move/delete/label`은 디스크에 바로 쓰고 씬 Undo 그룹에 묶일 수 없음. 트랜잭션 안에서 실행은 되지만 commit/rollback으로 되돌릴 수는 없음 (씬 mutation과 달리).
+
 ### 콘솔 로그
 
 ```bash

@@ -460,6 +460,35 @@ Failure modes:
 - GameObject asset exists but isn't a prefab (e.g. a raw model) → `UCI-011`.
 - `unpack`/`apply` on a GO that isn't a prefab instance → `UCI-011`.
 
+### Transactions
+
+Without a transaction, every mutation (`go create`, `component set`, `prefab instantiate`, ...) creates its own Unity Undo group — reversing a multi-step agent change requires N Ctrl+Z's. Inside a transaction, `commit` collapses every mutation since `begin` into a single Undo entry; a single Ctrl+Z in the Editor reverses the whole batch.
+
+```bash
+# Single-Undo batch
+udit tx begin --name "Spawn boss setup"
+udit go create --name Boss
+udit component add go:abcd1234 --type Rigidbody
+udit component set go:abcd1234 Rigidbody m_Mass 5.5
+udit tx commit                       # Ctrl+Z now reverses all 3 at once
+
+# Mid-operation revert
+udit tx begin --name "Try a layout"
+udit go create --name Candidate
+udit go move go:abcd1234 --parent go:5678abcd
+udit tx rollback                     # every change since begin is unwound
+
+# Check where you are
+udit tx status
+```
+
+Implementation detail: `begin` captures the current Unity Undo group, `commit` calls `Undo.CollapseUndoOperations(savedGroup)`, `rollback` calls `Undo.RevertAllDownToGroup(savedGroup)`. The transaction's name shows up in Edit → Undo after commit, so the human who joins the project later sees "Undo Spawn boss setup" rather than "Undo udit go create 'Boss'" for the last micro-op.
+
+Constraints worth knowing:
+- **One transaction per Unity instance.** The Undo stack is global, so there's exactly one nesting at a time. `begin` during an active tx returns `UCI-011` with the existing transaction's name and age.
+- **Domain reload wipes the handle.** Script recompiles tear down the connector's static state, so a mid-transaction reload leaves any partial mutations on the Undo stack but drops the transaction itself. `tx status` will report no active tx afterward — start a new one if you intended to keep grouping.
+- **AssetDatabase mutations do not participate.** `asset create/move/delete/label` write straight to disk and can't be collapsed into a scene-Undo group. Inside a transaction they still execute, but they are not reversible by commit/rollback the way scene mutations are.
+
 ### Console Logs
 
 ```bash

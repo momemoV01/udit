@@ -58,7 +58,7 @@ _udit_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands="asset completion component console editor exec go help list menu prefab profiler reserialize scene screenshot status test update version"
+    local commands="asset completion component console editor exec go help list menu prefab profiler reserialize scene screenshot status test tx update version"
     local globals="--port --project --timeout --json --help"
 
     case "$prev" in
@@ -81,6 +81,9 @@ _udit_complete() {
             return ;;
         prefab)
             COMPREPLY=( $(compgen -W "instantiate unpack apply find-instances" -- "$cur") )
+            return ;;
+        tx)
+            COMPREPLY=( $(compgen -W "begin commit rollback status" -- "$cur") )
             return ;;
         profiler)
             COMPREPLY=( $(compgen -W "hierarchy enable disable status clear" -- "$cur") )
@@ -148,6 +151,10 @@ _udit() {
             subs=('instantiate:Spawn a prefab instance' 'unpack:Unpack an instance' 'apply:Apply overrides' 'find-instances:List instances')
             _describe 'prefab action' subs
             return ;;
+        tx)
+            subs=('begin:Start a transaction' 'commit:Collapse into one Undo entry' 'rollback:Revert all changes since begin' 'status:Is a transaction active?')
+            _describe 'tx action' subs
+            return ;;
         profiler)
             subs=('hierarchy:Sample hierarchy' 'enable:Start recording' 'disable:Stop recording' 'status:Show state' 'clear:Clear frames')
             _describe 'profiler action' subs
@@ -165,6 +172,7 @@ _udit() {
         'component:Read component values + schemas'
         'asset:Query assets (find/inspect/deps/refs/guid/path)'
         'prefab:Prefab instantiate/unpack/apply/find-instances'
+        'tx:Group mutations into a single Undo entry'
         'console:Read console logs'
         'exec:Execute C# code'
         'list:List all registered tools'
@@ -207,7 +215,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @(
-        'editor', 'scene', 'go', 'component', 'asset', 'prefab', 'console', 'exec', 'list', 'status', 'test',
+        'editor', 'scene', 'go', 'component', 'asset', 'prefab', 'tx', 'console', 'exec', 'list', 'status', 'test',
         'profiler', 'screenshot', 'reserialize', 'menu',
         'update', 'help', 'version', 'completion'
     )
@@ -223,6 +231,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
         'component'  { @('list', 'get', 'schema', 'add', 'remove', 'set', 'copy') }
         'asset'      { @('find', 'inspect', 'dependencies', 'references', 'guid', 'path', 'create', 'move', 'delete', 'label') }
         'prefab'     { @('instantiate', 'unpack', 'apply', 'find-instances') }
+        'tx'         { @('begin', 'commit', 'rollback', 'status') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
         'completion' { @('bash', 'zsh', 'powershell', 'fish') }
         '--port'     { @() }
@@ -257,6 +266,7 @@ complete -c udit -n "__fish_use_subcommand" -a "go"          -d "Query GameObjec
 complete -c udit -n "__fish_use_subcommand" -a "component"   -d "Read component values + schemas"
 complete -c udit -n "__fish_use_subcommand" -a "asset"       -d "Query assets (find/inspect/deps/refs/guid/path)"
 complete -c udit -n "__fish_use_subcommand" -a "prefab"      -d "Prefab instantiate/unpack/apply/find-instances"
+complete -c udit -n "__fish_use_subcommand" -a "tx"          -d "Group mutations into a single Undo entry"
 complete -c udit -n "__fish_use_subcommand" -a "console"     -d "Read console logs"
 complete -c udit -n "__fish_use_subcommand" -a "exec"        -d "Execute C# code"
 complete -c udit -n "__fish_use_subcommand" -a "list"        -d "List registered tools"
@@ -276,6 +286,7 @@ complete -c udit -n "__fish_seen_subcommand_from go"         -a "find inspect pa
 complete -c udit -n "__fish_seen_subcommand_from component"  -a "list get schema add remove set copy"
 complete -c udit -n "__fish_seen_subcommand_from asset"      -a "find inspect dependencies references guid path create move delete label"
 complete -c udit -n "__fish_seen_subcommand_from prefab"     -a "instantiate unpack apply find-instances"
+complete -c udit -n "__fish_seen_subcommand_from tx"         -a "begin commit rollback status"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"
 complete -c udit -n "__fish_seen_subcommand_from completion" -a "bash zsh powershell fish"
 
