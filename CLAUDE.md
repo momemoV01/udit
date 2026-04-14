@@ -2,6 +2,10 @@
 
 CLI tool to control Unity Editor from the command line. Agent-first fork of unity-cli.
 
+## Planning
+
+전체 로드맵은 [`docs/ROADMAP.md`](./docs/ROADMAP.md) 참고. 새 기능 작업 시 해당 문서의 Phase 스코프/성공 기준과 맞추고, 설계 결정은 **Decision Log** 섹션에 추가한다.
+
 ## Structure
 
 ```

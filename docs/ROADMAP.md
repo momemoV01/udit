@@ -1,0 +1,629 @@
+# udit Roadmap
+
+> Living plan. 버전/우선순위는 실사용 피드백에 따라 조정됨.
+> Last updated: 2026-04-14
+
+## Vision
+
+**udit은 AI 에이전트가 단독으로 Unity 게임을 개발·빌드·배포할 수 있는 CLI 도구다.**
+
+현재(v0.1.0)는 상위 프로젝트 [unity-cli](https://github.com/youngwoocho02/unity-cli)의 얇은 HTTP 브리지만 포함한다. 이는 "실행 레이어"로는 훌륭하지만, 에이전트가 진짜로 원하는 **관찰 레이어 / 변경 레이어 / 자동화 레이어 / 스트리밍 레이어**가 빠져 있다. 이 문서는 그 갭을 메우는 계획이다.
+
+종착점(v1.0.0)에서 달성하고 싶은 것:
+
+- 에이전트가 **`exec` 없이** 90% 이상의 Unity 작업을 할 수 있다
+- 인디 개발자가 **빌드부터 배포까지** CLI 한 줄로 자동화한다
+- 에이전트가 파일 변경을 **실시간으로 감지**하고 Unity 상태에 반응한다
+- 단 한 명의 유지보수자가 **5년간** 관리 가능한 복잡도에 머무른다
+
+## Design Principles (불변)
+
+아래 원칙은 **모든 단계에서 깨지지 않는다**. 이게 udit을 가볍게 유지하는 골격이다.
+
+1. **Stateless HTTP 유지** — 상주 서버나 세션 상태 추가 금지. 매 요청이 독립적.
+2. **Go CLI는 얇게** — 복잡한 로직은 전부 C# 쪽에. Go는 포워딩 + 폴링 + 파싱만.
+3. **모든 출력은 에이전트 파싱 가능** — `--json` 기본 지원, 정형 에러 코드.
+4. **기존 API 파괴 금지** — v1.0까지 새 파라미터/커맨드만 추가. 기존 것 제거·변경 금지.
+5. **10k LOC 상한** — 한 사람이 머릿속에 담을 수 있는 크기. 초과하면 리팩터 또는 외부 분리.
+
+## Timeline at a Glance
+
+| 단계 | 버전 | 테마 | 상태 | 핵심 가치 |
+|---|---|---|---|---|
+| 0 | `v0.1.0` | Initial Fork | ✅ **Done** | unity-cli 리브랜드 기반선 |
+| 1 | `v0.2.0` | **Foundation** | 📋 Planned | 버그 + JSON + 설정 파일 |
+| 2 | `v0.3.0` | **Observe** | 📋 Planned | 씬/에셋/GO 읽기 |
+| 3 | `v0.4.0` | **Mutate** | 📋 Planned | GO/컴포넌트/prefab 쓰기 |
+| 4 | `v0.5.0` | **Automate** | 📋 Planned | 빌드/패키지 관리 |
+| 5 | `v0.6.0` | **Stream** | 📋 Planned | watch + log tail |
+| 6 | `v1.0.0` | **Polish & Freeze** | 📋 Planned | 테스트/문서/API 동결 |
+
+---
+
+## Phase 0: v0.1.0 — Initial Fork (DONE)
+
+**완료일**: 2026-04-14
+
+unity-cli v0.3.9의 **리브랜드 복사본**. 기능 변경 없음. 자세한 변경사항은 [CHANGELOG.md](../CHANGELOG.md) 참고.
+
+핵심 산출물:
+- Go 모듈: `github.com/momemoV01/udit`
+- Unity 패키지: `com.momemov01.udit-connector`
+- C# 네임스페이스: `UditConnector`, 어트리뷰트 `[UditTool]`
+- 기본 포트: `8590` (unity-cli와 공존)
+- GitHub Release v0.1.0 (5개 플랫폼 바이너리)
+
+---
+
+## Phase 1: v0.2.0 — Foundation
+
+**목표**: 후속 기능의 **공통 인프라** 구축. 이 단계를 건너뛰면 이후 모든 단계가 기술부채를 누적한다.
+
+### 1.1 크리티컬 버그 픽스 (from unity-cli 분석)
+
+| 버그 | 파일 | 수정 |
+|---|---|---|
+| `ExecuteCsharp` 타임아웃 시 프로세스 미종료 | `udit-connector/Editor/Tools/ExecuteCsharp.cs:169` | `proc.Kill()` 추가 |
+| `EditorScreenshot` 차원 무제한 | `udit-connector/Editor/Tools/EditorScreenshot.cs:36-38` | 8192×8192 상한 |
+| `CommandRouter` 컴파일/업데이트 중 명령 수용 | `udit-connector/Editor/CommandRouter.cs` | `isCompiling`/`isUpdating` 가드 |
+| `buildParams` 불린 강제 변환 | `cmd/root.go:221-229` | 파라미터 화이트리스트 |
+
+### 1.2 글로벌 `--json` 플래그 (최중요)
+
+**현재**: 응답이 JSON일 때도 있고 raw text일 때도 있음 — 파싱 불가.
+
+**변경**: `--json` 지정 시 stdout은 **100% 정형 JSON**.
+```json
+{
+  "success": true,
+  "command": "console",
+  "data": { ... },
+  "message": "Read 5 entries",
+  "error_code": null,
+  "unity": {
+    "port": 8590,
+    "project": "E:/Games/MyGame",
+    "state": "ready",
+    "version": "6000.1.0f1"
+  }
+}
+```
+
+구현:
+- `cmd/root.go`의 `printResponse()`에 JSON 분기
+- 모든 help 텍스트에 `--json` 섹션 추가
+- 에러도 JSON으로 (exit code는 유지)
+
+### 1.3 에러 코드 레지스트리
+
+에이전트가 **재시도 여부를 구조적으로 판단**하기 위함.
+
+```
+UCI-001  NoUnityRunning           → 사용자가 Unity 시작 필요
+UCI-002  ConnectionRefused        → 재시도 대상
+UCI-003  CommandTimeout           → 재시도 대상
+UCI-010  UnknownCommand           → 재시도 불가 (명령 오타)
+UCI-011  InvalidParams            → 재시도 불가
+UCI-020  UnityBusy (compiling)    → 2-3초 후 재시도
+UCI-021  UnityBusy (updating)     → 2-3초 후 재시도
+UCI-030  ExecCompileError         → 재시도 불가 (사용자 코드 문제)
+UCI-031  ExecRuntimeError         → 재시도 불가
+UCI-040  AssetNotFound            → 재시도 불가
+UCI-041  SceneNotFound            → 재시도 불가
+```
+
+구현: C# 쪽 `ErrorResponse`에 `ErrorCode` 필드 추가, Go 쪽 에러 매핑.
+
+### 1.4 설정 파일 `.udit.yaml`
+
+프로젝트 루트에 두면 자동 로드.
+
+```yaml
+# .udit.yaml 예시
+default_port: 8590
+default_timeout_ms: 120000
+
+exec:
+  usings: [Unity.Entities, Unity.Mathematics, MyGame.Core]
+
+watch:
+  paths: [Assets/Scripts]
+  debounce_ms: 300
+  on_change: ["refresh --compile", "console --type error"]
+
+build:
+  targets:
+    win64:
+      output: builds/win64/MyGame.exe
+      scenes: [Assets/Scenes/Main.unity]
+    android:
+      output: builds/android/MyGame.apk
+      il2cpp: true
+```
+
+구현: Go 쪽 YAML 로드 (`gopkg.in/yaml.v3`), cwd 부터 상위로 search.
+
+### 1.5 Shell 자동완성
+
+```bash
+udit completion bash | sudo tee /etc/bash_completion.d/udit
+udit completion powershell > $PROFILE.CurrentUserAllHosts
+```
+
+### Phase 1 성공 기준
+
+- [ ] 기존 모든 테스트 통과
+- [ ] `--json` 포함 모든 응답이 schema-valid
+- [ ] 설정 파일 로드 실패해도 기본값으로 동작
+- [ ] 에러 코드 문서화 (`docs/ERROR_CODES.md`)
+
+---
+
+## Phase 2: v0.3.0 — Observe
+
+**목표**: 에이전트가 **`exec` 없이** 프로젝트 상태를 읽을 수 있게.
+
+### 2.1 `scene` — 씬 관리
+
+```bash
+udit scene list                      # 프로젝트 내 모든 씬
+udit scene active                    # 현재 활성 씬
+udit scene open Assets/Scenes/Main.unity
+udit scene save                      # 현재 씬 저장
+udit scene reload                    # 변경 버리고 재로드
+udit scene tree [--depth 3]          # 하이어라키 JSON 트리
+```
+
+응답 예시 (`scene tree`):
+```json
+{
+  "scene": "Assets/Scenes/Main.unity",
+  "roots": [
+    {
+      "id": "go:a1b2c3d4",
+      "name": "Player",
+      "active": true,
+      "components": ["Transform", "Rigidbody", "PlayerController"],
+      "children": [ ... ]
+    }
+  ]
+}
+```
+
+### 2.2 `go` — GameObject 쿼리
+
+```bash
+udit go find --name "Enemy*" [--tag Enemy] [--component Rigidbody]
+udit go inspect go:a1b2c3d4              # 모든 컴포넌트 + 값 덤프
+udit go path go:a1b2c3d4                 # 하이어라키 경로 문자열
+```
+
+**Stable ID 설계**: Unity `InstanceID`는 세션 스코프라 재시작 시 바뀜.
+→ `GlobalObjectId`를 해시해서 `go:{8자 hash}` 포맷으로 래핑.
+
+### 2.3 `asset` — 에셋 쿼리
+
+```bash
+udit asset find --type Prefab [--name "*Enemy*"] [--label boss]
+udit asset inspect Assets/Prefabs/Player.prefab
+udit asset dependencies Assets/Scenes/Main.unity
+udit asset references Assets/Prefabs/Player.prefab
+udit asset guid Assets/Prefabs/Player.prefab
+udit asset path <guid>
+```
+
+### 2.4 `component` — 컴포넌트 쿼리
+
+```bash
+udit component get go:a1b2c3d4 Transform
+udit component get go:a1b2c3d4 Transform position
+udit component list go:a1b2c3d4
+udit component schema Rigidbody      # 프로퍼티 + 타입 스키마
+```
+
+### 구현 구조
+
+```
+udit-connector/Editor/Tools/
+  SceneTools.cs           (scene_list, scene_open, scene_save, scene_reload, scene_tree)
+  GameObjectTools.cs      (go_find, go_inspect, go_path)
+  AssetTools.cs           (asset_find, asset_inspect, asset_dependencies, asset_guid)
+  ComponentTools.cs       (component_get, component_list, component_schema)
+  Common/
+    StableIdRegistry.cs   (GlobalObjectId → go:hash 매핑 + 역매핑)
+    SerializedInspect.cs  (SerializedObject/SerializedProperty 순회)
+```
+
+### Phase 2 성공 기준
+
+- [ ] 에이전트가 `exec` 없이 **"읽기" 작업의 90%**를 완수
+- [ ] Stable ID로 여러 커맨드 체이닝 가능 (`go find` 결과의 id로 `go inspect` 호출)
+- [ ] 대규모 씬(GameObject 10,000+)에서 응답 < 2초
+- [ ] Pagination 지원 (`--limit N --offset M`)
+
+---
+
+## Phase 3: v0.4.0 — Mutate
+
+**목표**: 에이전트가 씬/에셋을 **변경**. "AI 게임 개발"의 분기점.
+
+### 3.1 GameObject 생성/삭제/수정
+
+```bash
+udit go create --name "Boss" [--parent go:a1b2c3d4] [--pos 0,1,0]
+udit go destroy go:5678abcd
+udit go move go:5678abcd --parent go:a1b2c3d4
+udit go rename go:5678abcd "NewName"
+udit go setactive go:5678abcd --active false
+```
+
+### 3.2 컴포넌트 조작
+
+```bash
+udit component add go:a1b2c3d4 --type Rigidbody
+udit component remove go:a1b2c3d4 --type Rigidbody
+udit component set go:a1b2c3d4 Transform position "0,1,0"
+udit component set go:a1b2c3d4 Rigidbody mass 5.5
+udit component copy go:a1b2c3d4 Transform go:5678abcd
+```
+
+**안전장치**: 모든 mutation 전에 `Undo.RecordObject` 자동 등록 → 사용자가 Unity에서 Ctrl+Z 가능.
+
+### 3.3 Prefab 인스턴싱
+
+```bash
+udit prefab instantiate Assets/Prefabs/Enemy.prefab --pos 5,0,0 [--parent go:a1b2c3d4]
+udit prefab unpack go:5678abcd
+udit prefab apply go:5678abcd
+udit prefab find-instances Assets/Prefabs/Enemy.prefab
+```
+
+### 3.4 에셋 생성/이동/삭제
+
+```bash
+udit asset create ScriptableObject --type GameConfig --path Assets/Config/
+udit asset move Assets/Old.prefab Assets/New/Moved.prefab
+udit asset delete Assets/Unused.prefab
+udit asset label add Assets/Prefabs/Boss.prefab boss_content
+```
+
+### 3.5 Dry-run 모드 (필수)
+
+```bash
+udit go destroy go:5678abcd --dry-run
+# → {"would_destroy": "Boss/Minion1", "children_affected": 3, "references_in_scene": []}
+```
+
+에이전트가 **실행 전 영향 범위**를 확인 가능.
+
+### 3.6 트랜잭션 (중장기)
+
+```bash
+udit tx begin
+udit go create --name Boss
+udit component add go:... Rigidbody
+udit tx commit   # 또는 udit tx rollback
+```
+
+구현: `Undo.CollapseUndoOperations`로 여러 변경을 단일 Undo 엔트리로.
+
+### Phase 3 성공 기준
+
+- [ ] 에이전트가 **씬 편집 시나리오** end-to-end 완수
+- [ ] 모든 변경이 Unity Undo로 되돌림 가능
+- [ ] Dry-run이 실제 실행과 정확히 일치
+- [ ] 트랜잭션 rollback 시 상태 완벽 복구
+
+---
+
+## Phase 4: v0.5.0 — Automate
+
+**목표**: CI/배포 자동화. 인디에게 "빌드 버튼 자동화"는 시간 절약 1순위.
+
+### 4.1 `build` — 플레이어 빌드
+
+```bash
+udit build player --target win64 --output builds/win64/
+udit build player --config production        # .udit.yaml의 build.targets.production 사용
+udit build player --scenes Main,Level1 --target android --il2cpp
+udit build targets                            # 사용 가능한 타겟 목록
+udit build addressables [--profile Default]
+udit build cancel                             # 진행 중 빌드 취소
+```
+
+**빌드 진행도**: SSE 스트리밍 (Phase 5와 맞물림).
+```
+[build] Compiling scripts...          ████████░░  80%
+[build] Writing player...             ███░░░░░░░  30%
+```
+
+### 4.2 `package` — UPM 패키지 관리
+
+```bash
+udit package list
+udit package add com.unity.cinemachine
+udit package add com.unity.cinemachine@2.9.7
+udit package add https://github.com/dbrizov/NaughtyAttributes.git
+udit package remove com.unity.cinemachine
+udit package info com.unity.cinemachine
+udit package search cinemachine
+udit package resolve                          # manifest.json 재해결
+```
+
+### 4.3 `test` 확장
+
+```bash
+udit test run --mode PlayMode --filter "Level.*" --output junit.xml
+udit test list [--mode EditMode]              # 실행 전 테스트 목록
+udit test coverage                            # Code Coverage 패키지 연동
+```
+
+### 4.4 `project` — 프로젝트 메타
+
+```bash
+udit project info                             # 버전, 패키지, 씬, LOC
+udit project validate                         # missing references, 누락 에셋 스캔
+udit project preflight                        # 빌드 전 헬스체크 (컴파일 에러, missing refs, 에셋 무결성)
+```
+
+### Phase 4 성공 기준
+
+- [ ] 인디가 **CI/GitHub Actions에서 udit만으로** 빌드-테스트-배포 완수
+- [ ] `build player` 진행도 실시간 리포트
+- [ ] `project validate`가 missing reference 100% 탐지
+- [ ] `test run` JUnit XML 출력으로 CI 통합
+
+---
+
+## Phase 5: v0.6.0 — Stream
+
+**목표**: **긴 시간 단위 반응형 워크플로** — watch 모드 + 로그 스트리밍.
+
+### 5.1 `watch` — 파일 변경 감시 + 자동화
+
+```bash
+udit watch                                    # .udit.yaml 설정대로
+udit watch --path Assets/Scripts --on-change "refresh --compile"
+udit watch --path Assets --on-change "reserialize $FILE"
+```
+
+내부 플로우:
+```
+fsnotify (Go) → 디바운스 300ms → udit refresh --compile
+  → console --type error → (에러 있으면 stderr 출력)
+  → 성공 시 "OK"
+```
+
+Ctrl+C 시 진행 중 커맨드 완료 후 정상 종료.
+
+### 5.2 `log tail -f` — 콘솔 로그 스트리밍
+
+```bash
+udit log tail --follow [--type error,warning]
+udit log tail --follow --since 5m             # 최근 5분부터
+udit log tail --filter "Boss"                 # 정규식 필터
+```
+
+**아키텍처**: udit-connector에 SSE 엔드포인트 추가.
+```
+GET /logs/stream?types=error,warning  (Accept: text/event-stream)
+→ event: log
+  data: {"timestamp": 123, "type": "Error", "message": "...", "stack": "..."}
+```
+
+도메인 리로드 중 자동 재연결.
+
+### 5.3 `run` — 스크립트 러너 (선택)
+
+```bash
+udit run scripts/bootstrap.sh
+```
+
+설정 파일에 정의된 복합 워크플로 실행. `make` 느낌.
+
+### Phase 5 성공 기준
+
+- [ ] `watch` 중 1000회 변경에도 메모리/CPU 안정
+- [ ] `log tail`에서 도메인 리로드 중 **끊김 없이** 재연결
+- [ ] SSE 스트림이 네트워크 일시 단절에 자동 복구
+
+---
+
+## Phase 6: v1.0.0 — Polish & Freeze
+
+**목표**: 프로덕션 신뢰도 확보. **API 동결** + **장기 유지보수 가능한 상태**.
+
+### 6.1 테스트 커버리지
+
+- C# 유닛 테스트 50% 이상 (현재 거의 0)
+- E2E 테스트 스위트 (Unity 자동 기동 → 시나리오 → 검증)
+- `test-harness` 저장소 별도 분리 (CI Unity 라이선스 풀)
+
+### 6.2 문서화
+
+- **Tool Reference** 자동 생성 (`udit list --json` → `docs/TOOLS.md`)
+- **Cookbook** — 실전 시나리오 20개 (씬 생성부터 빌드까지)
+- **Claude Code 통합 가이드** — `.claude/` 템플릿 제공
+- **Migration from unity-cli** 문서
+
+### 6.3 API 동결
+
+- v1.0 이후 **breaking change 금지**
+- 새 기능은 새 파라미터/커맨드로만
+- 5년 유지보수 commitment
+
+### 6.4 에이전트 친화 기능
+
+```bash
+udit context                                  # 프로젝트 맥락 요약 (에이전트용)
+# → { "unity_version", "packages", "scenes", "scripts_count", "assemblies" }
+
+udit explain <topic>                          # 짧은 개념 설명
+# → "Addressables: Unity's asset management system..."
+```
+
+### Phase 6 성공 기준
+
+- [ ] C# 테스트 커버리지 ≥ 50%
+- [ ] Cookbook 시나리오 ≥ 20개
+- [ ] 최소 3개 인디 프로젝트에 프로덕션 사용 확인
+- [ ] 1년간 breaking change 0건
+
+---
+
+## Cross-Cutting Architecture
+
+이 항목들은 **여러 단계에 걸쳐** 적용되는 공통 인프라.
+
+### C-1. 버전화된 API
+
+모든 응답에 `"api_version": "1"` 필드. 클라이언트가 호환성 판단.
+
+### C-2. Pagination
+
+큰 응답(`go find`, `asset find`)은 자동 페이지네이션.
+```json
+{ "data": [...100 items], "next_cursor": "abc", "total": 5234 }
+```
+
+### C-3. 공통 ID 네이밍
+
+- `go:{8자 hash}` — GameObject (GlobalObjectId 해시)
+- `asset:{guid}` — Asset (Unity GUID)
+- `scene:{guid}` — Scene (Unity GUID)
+
+### C-4. `--output` 옵션
+
+```bash
+udit scene tree --output yaml      # JSON 대신 YAML
+udit go inspect go:... --output csv
+```
+
+### C-5. 텔레메트리 (opt-in)
+
+익명 사용량 수집 — `--telemetry on`으로 명시 활성화 시만. **기본은 꺼짐**.
+
+---
+
+## Success Metrics (KPIs)
+
+측정 가능한 지표로 진척도 추적.
+
+### 개발 효율성
+| 지표 | 현재 | 목표 (v1.0) |
+|---|---|---|
+| 에이전트가 `exec` 없이 완수 가능한 작업 비율 | ~40% | 90% |
+| 인디 프로젝트 1회 빌드 자동화 시간 | 수동 5분 | udit 30초 |
+
+### 안정성
+| 지표 | 목표 |
+|---|---|
+| P95 응답 시간 (소규모 명령) | < 500ms |
+| P95 응답 시간 (큰 쿼리) | < 2초 |
+| 24시간 세션 메모리 증가 | < 100MB |
+| Unity 재시작 없이 연속 명령 수 | 10,000+ |
+
+### 생태계
+| 지표 | 목표 |
+|---|---|
+| 커스텀 `[UditTool]` 작성 예시 저장소 | 최소 10개 |
+| Claude Code 스킬 템플릿 | 최소 5개 |
+
+---
+
+## Risk Register
+
+| 리스크 | 영향 | 대응 |
+|---|---|---|
+| **Unity API breaking change** (6000 → 6001) | 중 | `#if UNITY_6000_1_OR_NEWER` 조건부 컴파일 |
+| **도메인 리로드 중 명령 유실** | 상 | Heartbeat 감지 + CLI 자동 재시도 |
+| **대규모 씬 성능 저하** | 중 | Pagination + Lazy loading |
+| **코드 복잡도 폭증** | 상 | 10k LOC 상한 엄수, 기능별 독립 어셈블리 |
+| **커스텀 툴과 충돌** | 하 | `[UditTool(Namespace="myteam")]` 네임스페이스 지원 |
+| **에이전트가 파괴적 커맨드 남용** | 상 | `--dry-run` 기본 + 권한 선언 메타데이터 |
+| **Private → Public 전환 타이밍** | 중 | v0.2.0 후 결정 (현재 Private) |
+
+---
+
+## Contributing
+
+현재는 **solo maintainer** (momemo / `momemoV01`). v1.0 전까지 외부 기여 제한.
+
+### 로컬 개발 흐름
+
+```bash
+git clone https://github.com/momemoV01/udit
+cd udit
+go build -o udit.exe .
+go test ./...
+```
+
+상세 흐름은 [CLAUDE.md](../CLAUDE.md)의 "Verification" / "릴리스 플로우" 섹션 참고.
+
+### Claude Code와 작업 시
+
+프로젝트 루트 `CLAUDE.md`에 udit 개발 컨벤션이 있음. 에이전트가 자동 참고.
+
+### 이슈 트래킹
+
+현재는 GitHub Issues로 단순 관리. v1.0 이후 labels/milestones로 세분화.
+
+---
+
+## Upstream Relationship
+
+udit은 [unity-cli](https://github.com/youngwoocho02/unity-cli) by DevBookOfArray의 fork. 자세한 attribution은 [NOTICE.md](../NOTICE.md) 참고.
+
+### 업스트림 정책
+
+1. **원본에 중요 버그픽스가 나오면 cherry-pick 검토** — 특히 Phase 1 스코프 버그들은 upstream에도 보고할 가치 있음.
+2. **범용 개선은 upstream PR 우선** — udit 고유 기능이 아닌 것(예: Windows HOME 테스트 픽스)은 upstream에 기여.
+3. **큰 방향성 분기는 udit 고유로** — 에이전트 중심 설계 결정(JSON 우선, 에러 코드, 설정 파일)은 upstream과 독립 진행.
+
+### 업스트림 체크 커맨드
+
+```bash
+# 원본을 upstream으로 추가 (최초 1회)
+git remote add upstream https://github.com/youngwoocho02/unity-cli
+
+# 주기적으로 최근 변경 확인
+git fetch upstream
+git log upstream/master --oneline --since="2 weeks ago"
+```
+
+---
+
+## Decision Log
+
+프로젝트 중 내린 중요 결정을 기록. 나중에 "왜 이렇게 했지?" 고민 줄이기.
+
+| 날짜 | 결정 | 이유 |
+|---|---|---|
+| 2026-04-14 | Fork 이름 `udit` | 4자, 타이핑 최적, "unity edit" 암시, 산스크리트 의미 (떠오른) |
+| 2026-04-14 | 기본 포트 8590 | unity-cli (8090)과 공존 가능 |
+| 2026-04-14 | Private 시작 | 초기 리네임 혼란 비공개, 안정화 후 Public 검토 |
+| 2026-04-14 | `master` → `main` | 현대 표준 (원본은 `master`) |
+| 2026-04-14 | README.ko.md 삭제 | 1인 유지보수, 단일 영어 README로 통일 |
+| 2026-04-14 | v0.1.0 reset | fork 정체성 명확화 (upstream v0.3.9과 분리) |
+
+---
+
+## References
+
+- [unity-cli 원본 분석](https://github.com/youngwoocho02/unity-cli)
+- [CLAUDE.md](../CLAUDE.md) — 개발 컨벤션
+- [CHANGELOG.md](../CHANGELOG.md) — 버전별 변경사항
+- [NOTICE.md](../NOTICE.md) — Attribution
+- [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+- [Semantic Versioning](https://semver.org/)
+
+---
+
+## Next Actions (이번 주)
+
+구체적으로 **지금 뭐부터 할지** 리마인더.
+
+- [ ] v0.1.0 Public 전환 여부 결정 (Unity Connector 설치 테스트 위해)
+- [ ] 실제 Unity 프로젝트에 Connector 설치 + 연결 검증
+- [ ] `.claude/skills/unity-verify/SKILL.md` 작성 (Claude Code 통합)
+- [ ] Phase 1 착수: ExecuteCsharp 타임아웃 픽스부터

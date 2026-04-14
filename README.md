@@ -468,6 +468,17 @@ udit editor play
 | **Compatibility** | MCP-compatible clients only | Anything with a shell |
 | **Custom tools** | Same `[Attribute]` + `HandleCommand` pattern | Same |
 
+## Roadmap
+
+See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the phased plan from `v0.1.0` (current baseline) through `v1.0.0` (API-frozen, production-ready). Highlights:
+
+- **v0.2.0 — Foundation** — bug fixes, global `--json` output, error code registry, `.udit.yaml` config
+- **v0.3.0 — Observe** — `scene` / `go` / `asset` / `component` query commands (no more `exec` for reads)
+- **v0.4.0 — Mutate** — GameObject / component / prefab creation, modification, deletion
+- **v0.5.0 — Automate** — `build player`, `package` (UPM), extended `test`, project preflight
+- **v0.6.0 — Stream** — `watch` mode, `log tail --follow` over SSE
+- **v1.0.0 — Polish & Freeze** — 50%+ test coverage, cookbook docs, 5-year API commitment
+
 ## Acknowledgments
 
 udit is a fork of **[unity-cli](https://github.com/youngwoocho02/unity-cli)** created by **DevBookOfArray** (youngwoocho02). The original tool — its architecture, HTTP bridge, reflection-based tool discovery, heartbeat design, and domain-reload handling — forms the complete foundation of this project. The fork exists to pursue an agent-first roadmap under its own identity, with DevBookOfArray's explicit permission. See [NOTICE.md](./NOTICE.md) for details.
