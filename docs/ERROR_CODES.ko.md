@@ -20,6 +20,7 @@
 | `UCI-040` | AssetNotFound | Connector | ❌ 경로/GUID 수정 | Phase 2 (Observe) 예약 |
 | `UCI-041` | SceneNotFound | Connector | ❌ 경로 수정 | `scene open`에 존재하지 않는 경로 |
 | `UCI-042` | GameObjectNotFound | Connector | ❌ 재스캔 후 ID 수정 | `go inspect` / `go path` 에 오래되거나 알 수 없는 stable ID |
+| `UCI-043` | ComponentNotFound | Connector | ❌ 타입명 수정 | `component get` / `component schema` 에서 GameObject에 해당 타입이 없거나, 로드된 어셈블리에 그런 타입 자체가 없음 |
 | `UCI-999` | Unknown | 양쪽 | 🟡 메시지 검사 | 미분류 — 로그 + 업스트림 보고 |
 
 ## 상세
@@ -122,6 +123,26 @@
 }
 ```
 
+### `UCI-043` — ComponentNotFound
+
+**출처**: Connector (`ManageComponent`)
+**발생 시점**: 세 가지 경우가 하나의 코드로 묶임 (수정 방법이 동일 — 타입 이름 확인):
+- `component get go:XXXX MyType` — 해당 GameObject에 `MyType` 타입 컴포넌트가 없음.
+- `component schema MyType` — 로드된 어떤 어셈블리에도 `MyType` 이름이 없거나, 해당 타입이 `Component` 파생이 아니거나, 씬에 live 인스턴스가 없음 (schema v1은 probe 인스턴스 필요).
+- `component get go:XXXX MyType --index 3` — 해당 타입 컴포넌트가 4개 이하.
+
+**에이전트 행동**: 앞의 두 경우는 `udit component list go:XXXX`로 실제 붙어 있는 타입을 확인하고, schema 실패 시에는 `udit go find --component MyType`로 해당 타입이 씬에 있는지 확인. 타입명/인덱스/씬 구성을 수정 후 재시도. 타입 이름은 대소문자 무시 + 미수식 이름은 `UnityEngine.*` 우선 매칭되므로 `Transform`과 `UnityEngine.Transform`은 동일 동작.
+
+**예시**:
+```json
+{
+  "success": false,
+  "command": "component",
+  "error_code": "UCI-043",
+  "message": "Component type 'Rigidbody' not found on go:9598abb1. Attached: Transform, Camera, AudioListener."
+}
+```
+
 ### `UCI-999` — Unknown
 
 **출처**: 양쪽
@@ -140,12 +161,14 @@
             ▼                    ▼                    ▼
        UCI-001/010/030      UCI-002/020/021         UCI-003
        UCI-011/031/040      ────────────────       ───────
-       UCI-041/042
+       UCI-041/042/043
        ───────────────
        중단. 사용자에게      1-3초 sleep,          더 큰
        보고. 루프 금지.      한 번 재시도.          --timeout
        UCI-042: go find로   루프 max 3회.          으로 재시도
        재스캔 후에만 재시도.
+       UCI-043: component
+       list 먼저 확인.
 ```
 
 ## 새 코드 추가

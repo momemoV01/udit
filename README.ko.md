@@ -245,6 +245,38 @@ udit go path go:9598abb1
 
 알 수 없거나 만료된 id는 `UCI-042 GameObjectNotFound`를 반환 — `go find` 또는 `scene tree`로 stable-ID 레지스트리를 재시딩한 뒤 새 id로 재시도한다.
 
+### 컴포넌트 쿼리
+
+GameObject 전체를 다시 덤프하지 않고 특정 컴포넌트(또는 필드)만 zoom-in. 필드 이름은 `go inspect`가 내보내는 것과 동일 — 전체 체인에서 동일 어휘 사용.
+
+```bash
+# GameObject에 붙은 컴포넌트 목록
+udit component list go:9598abb1
+
+# 특정 컴포넌트 한 개의 모든 필드 덤프
+udit component get go:9598abb1 Transform
+
+# 단일 필드 zoom-in; 점 표기로 중첩 객체 탐색
+udit component get go:9598abb1 Transform position
+udit component get go:9598abb1 Transform position.z
+
+# 같은 타입이 여러 개면 --index 로 선택
+udit component get go:abcd1234 BoxCollider --index 1
+
+# 타입의 serialized-property 스키마
+# (로드된 씬에 live 인스턴스가 있어야 함)
+udit component schema Camera
+udit component schema UnityEngine.Transform
+udit component schema MyGame.PlayerController
+```
+
+타입 이름은 **대소문자 무시**. 짧은 이름(`Camera`)은 `UnityEngine.*` 우선 매칭되므로, 프로젝트에서 built-in을 섀도잉하는 타입이면 전체 네임스페이스(`MyGame.Camera`)로 명시.
+
+실패 케이스:
+- GameObject id 미지/만료 → `UCI-042` (→ `go find`로 재시딩).
+- 해당 타입이 GO에 없음, `--index` 범위 밖, `schema`에 live 인스턴스 없음 → `UCI-043`. 메시지가 실제 붙은 타입 목록 또는 인스턴스 수를 알려줌.
+- 필드 경로 없음 → `UCI-011` + 유효한 top-level 필드 목록.
+
 ### 콘솔 로그
 
 ```bash

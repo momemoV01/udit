@@ -115,6 +115,8 @@ func Execute() error {
 		resp, err = sceneCmd(subArgs, send)
 	case "go":
 		resp, err = goCmd(subArgs, send)
+	case "component":
+		resp, err = componentCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -385,6 +387,12 @@ GameObjects:
   go inspect go:XXXXXXXX                           Dump components + serialized values
   go path go:XXXXXXXX                              Hierarchy path string (Root/Child/...)
 
+Components:
+  component list go:XXXXXXXX                       Enumerate components on a GameObject
+  component get go:XXXXXXXX <Type> [field]         Dump one component, optionally one field
+  component get go:XXXXXXXX <Type> --index N       Pick Nth instance when multiple attached
+  component schema <Type>                          Type schema (requires a live instance)
+
 Console:
   console                       Read error & warning logs (default)
   console --lines 20            Limit to N entries
@@ -573,6 +581,56 @@ Notes:
     seed the stable-ID registry when an ID is from a previous session.
   - inspect truncates arrays at 20 elements; use ` + "`component get`" + ` (coming
     in a later slice) for full array contents.
+`)
+	case "component":
+		fmt.Print(`Usage: udit component <list|get|schema> [options]
+
+Read component values and type schemas. Field names mirror what ` + "`go inspect`" + `
+emits, so the same vocabulary works end-to-end: find a GameObject, inspect
+it, zoom in on one field via ` + "`component get`" + `.
+
+Subcommands:
+  list <go:XXXXXXXX>
+      Enumerate components on a GameObject. Each entry has
+      { index, type, full_type, enabled }. Lighter than ` + "`go inspect`" + ` when
+      you only need the attached types.
+
+  get <go:XXXXXXXX> <TypeName> [field]
+      Dump one component. Without a field, returns every visible property
+      (same shape as the matching entry in ` + "`go inspect`" + `). With a dotted
+      field path ("position", "position.x", "m_Cameras.elements.0"), returns
+      just the leaf value.
+      --index N     Pick the Nth component when multiple of the same type
+                    are attached (e.g. two BoxColliders). Default 0.
+
+  schema <TypeName>
+      Emit the serialized-property schema for a component type. Requires a
+      live instance of the type in the loaded scenes (v1 probes an existing
+      instance rather than spawning one, because AddComponent has side
+      effects like RequireComponent chains). Fields include
+      { name, display_name, property_type, is_array, has_children }.
+
+Type name matching:
+  - Case-insensitive.
+  - Unqualified short names resolve against UnityEngine.* first, so
+    ` + "`Transform`" + ` and ` + "`UnityEngine.Transform`" + ` are equivalent.
+  - For project-local types that shadow a UnityEngine name, pass the full
+    namespace ("MyGame.Transform") to disambiguate.
+
+Examples:
+  udit component list go:9598abb1
+  udit component get go:9598abb1 Transform
+  udit component get go:9598abb1 Transform position
+  udit component get go:9598abb1 Transform local_position.z
+  udit component get go:abcd1234 BoxCollider --index 1
+  udit component schema Rigidbody
+  udit component schema MyGame.PlayerController
+
+Notes:
+  - Unknown go: IDs -> UCI-042 (see docs/ERROR_CODES.md).
+  - Missing type, bad index, or schema-without-instance -> UCI-043.
+  - A field path that does not exist -> UCI-011 with the list of top-level
+    fields so the agent can pick a valid one.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

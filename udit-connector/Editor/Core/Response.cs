@@ -26,10 +26,11 @@ namespace UditConnector
         public const string ExecCompileError = "UCI-030";
         public const string ExecRuntimeError = "UCI-031";
 
-        // 04x — asset/scene/GO lookup (reserved for Phase 2 Observe)
+        // 04x — asset/scene/GO/component lookup (Phase 2 Observe)
         public const string AssetNotFound      = "UCI-040";
         public const string SceneNotFound      = "UCI-041";
         public const string GameObjectNotFound = "UCI-042";
+        public const string ComponentNotFound  = "UCI-043";
 
         // 99x — generic fallback
         public const string Unknown         = "UCI-999";

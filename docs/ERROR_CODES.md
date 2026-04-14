@@ -20,6 +20,7 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 | `UCI-040` | AssetNotFound | Connector | ❌ Fix path/GUID | Reserved for Phase 2 (Observe) |
 | `UCI-041` | SceneNotFound | Connector | ❌ Fix path | `scene open` with non-existent path |
 | `UCI-042` | GameObjectNotFound | Connector | ❌ Re-scan, then fix ID | `go inspect` / `go path` with stale or unknown stable ID |
+| `UCI-043` | ComponentNotFound | Connector | ❌ Fix type name | `component get` / `component schema` where the GameObject has no component of that type, or no such type exists in loaded assemblies |
 | `UCI-999` | Unknown | Either | 🟡 Inspect message | Unclassified — log & report upstream |
 
 ## Detail
@@ -122,6 +123,26 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 }
 ```
 
+### `UCI-043` — ComponentNotFound
+
+**Origin**: Connector (`ManageComponent`)
+**Triggers when**: Three distinct cases, all of which map to the same code because the remediation is the same (check the type name):
+- `component get go:XXXX MyType` — the GameObject has no component of type `MyType`.
+- `component schema MyType` — no type named `MyType` exists in any loaded assembly, or the type is not a `Component` subclass, or no live instance of `MyType` exists in the loaded scenes (schema v1 requires a probe instance).
+- `component get go:XXXX MyType --index 3` — fewer than 4 components of that type on the GameObject.
+
+**Agent action**: Run `udit component list go:XXXX` to see which types are actually on the GameObject (for the first two cases) or `udit go find --component MyType` to see if any scene has an instance (for schema). Fix the type name / index / scene setup and retry. Type names are matched case-insensitively and unqualified names resolve against `UnityEngine.*` first, so `Transform` and `UnityEngine.Transform` behave identically.
+
+**Example**:
+```json
+{
+  "success": false,
+  "command": "component",
+  "error_code": "UCI-043",
+  "message": "Component type 'Rigidbody' not found on go:9598abb1. Attached: Transform, Camera, AudioListener."
+}
+```
+
 ### `UCI-999` — Unknown
 
 **Origin**: Either side
@@ -140,12 +161,14 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
             ▼                    ▼                    ▼
        UCI-001/010/030      UCI-002/020/021         UCI-003
        UCI-011/031/040      ────────────────       ───────
-       UCI-041/042                                    
+       UCI-041/042/043                                
        ───────────────                                
        Stop. Report to       Sleep 1-3s,           Retry once
        user. Don't loop.     retry once.           with longer
        UCI-042: re-scan     Loop max 3x.          --timeout.
-       first via go find.                          
+       via go find first.
+       UCI-043: component
+       list first.
 ```
 
 ## Adding New Codes

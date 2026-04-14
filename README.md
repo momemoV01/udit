@@ -244,6 +244,38 @@ udit go path go:9598abb1
 
 Unknown or stale ids return `UCI-042 GameObjectNotFound` — run `go find` or `scene tree` to re-seed the stable-ID registry, then retry with the fresh id.
 
+### Components
+
+Zoom in on a single component (or a single field) without re-dumping the whole GameObject. Field names mirror what `go inspect` emits, so the same vocabulary works end-to-end.
+
+```bash
+# Enumerate the components attached to a GameObject
+udit component list go:9598abb1
+
+# Dump one component (every visible field)
+udit component get go:9598abb1 Transform
+
+# Zoom in on one field; dotted paths traverse nested objects
+udit component get go:9598abb1 Transform position
+udit component get go:9598abb1 Transform position.z
+
+# Pick among multiple instances of the same type
+udit component get go:abcd1234 BoxCollider --index 1
+
+# Inspect the serialized-property schema of a type
+# (requires a live instance in the loaded scenes)
+udit component schema Camera
+udit component schema UnityEngine.Transform
+udit component schema MyGame.PlayerController
+```
+
+Type names are **case-insensitive**. Unqualified short names (`Camera`) resolve against `UnityEngine.*` first; pass the full namespace (`MyGame.Camera`) to disambiguate project types that shadow built-ins.
+
+Failure modes:
+- GameObject id unknown / stale → `UCI-042` (run `go find` to re-seed).
+- Type not on the GameObject, bad `--index`, or `schema` with no live instance → `UCI-043`; the message enumerates attached types or instance count so agents can self-correct.
+- Field path does not exist → `UCI-011` with the list of valid top-level fields.
+
 ### Console Logs
 
 ```bash
