@@ -391,6 +391,46 @@ udit asset path 8c9cfa26abfee488c85f1582747f6a02
 
 알 수 없는 path/GUID는 `UCI-040 AssetNotFound` — `asset find`로 먼저 식별자를 검증.
 
+#### 에셋 변경 (v0.4.x+)
+
+에셋 생성, 이동, 삭제, 라벨 관리. 모든 mutation이 `--dry-run` 지원, `delete`는 기본적으로 OS 휴지통으로 이동 (복구 가능).
+
+```bash
+# ScriptableObject 파생 에셋 생성. --path가 '/'로 끝나면 <TypeName>.asset 자동 추가;
+# 명시적 파일명을 주면 그대로 사용.
+udit asset create --type MyGame.GameConfig --path Assets/Config/
+udit asset create --type MyGame.GameConfig --path Assets/Config/Custom.asset
+
+# 폴더 생성은 sentinel 타입 "Folder" 사용.
+udit asset create --type Folder --path Assets/NewFolder
+
+# move는 GUID 유지 — 프로젝트의 기존 참조가 모두 살아있음.
+udit asset move Assets/Old.prefab Assets/New/Moved.prefab
+
+# 삭제: 기본은 OS 휴지통 (복구 가능), --permanent로 완전 삭제.
+udit asset delete Assets/Unused.prefab
+udit asset delete Assets/Unused.prefab --permanent
+
+# --permanent는 프로젝트 전체를 스캔해서 이 에셋을 참조하는 다른 에셋 수를
+# referenced_by로 보고 — caller가 영향 범위를 미리 확인 가능.
+udit asset delete Assets/Shared.mat --permanent --dry-run
+
+# 라벨: add/remove는 하나 이상, set은 전체 교체, clear는 전부 삭제, list는 읽기.
+udit asset label add    Assets/Prefabs/Boss.prefab boss_content critical
+udit asset label remove Assets/Prefabs/Boss.prefab critical
+udit asset label list   Assets/Prefabs/Boss.prefab
+udit asset label set    Assets/Prefabs/Boss.prefab final_content
+udit asset label clear  Assets/Prefabs/Boss.prefab
+```
+
+**Undo 주의.** AssetDatabase 연산 (Create/Move/Delete/SetLabels)은 Unity의 씬 Undo에 **참여하지 않음**. Editor의 Ctrl+Z로 되돌리기 불가. 안전장치는 `--dry-run` (side-effect 없이 preview)과 `delete`의 기본 `MoveAssetToTrash` (OS 휴지통에서 복구 가능). 불확실하면 dry-run 먼저.
+
+실패 케이스:
+- 없는 path/GUID → `UCI-040`.
+- `create --type X`에서 X가 ScriptableObject 파생이 아니거나 sentinel `Folder`도 아닌 경우 → `UCI-011` + 지원 타입 안내. UnityEngine 타입과 disambiguate하려면 full name (`MyGame.GameConfig`) 사용.
+- `create` / `move` destination 이미 존재 → `UCI-011` (먼저 move 또는 delete).
+- 라벨 op이 `add / remove / list / set / clear`가 아니면 → `UCI-011`.
+
 ### Prefab
 
 `scene` + `go` + `asset` 위의 Prefab 연산. `instantiate`는 `PrefabUtility.InstantiatePrefab`을 사용하므로 씬 인스턴스가 에셋과의 link를 유지 (`Object.Instantiate`와 다름). 모든 연산 Unity Undo 통과.

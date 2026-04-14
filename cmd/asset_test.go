@@ -189,8 +189,210 @@ func TestAssetCmd_EmptyArgs(t *testing.T) {
 }
 
 func TestAssetCmd_UnknownAction(t *testing.T) {
+	// "delete" used to stand in for "unknown" — it is now a real mutation.
+	// Use a genuinely unused word so the default branch is still validated.
+	send, _ := mockSend("manage_asset", t)
+	if _, err := assetCmd([]string{"vaporize"}, send); err == nil {
+		t.Error("expected error for unknown action")
+	}
+}
+
+// --- Mutation tests -------------------------------------------------------
+
+func TestAssetCmd_Create(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{
+		"create",
+		"--type", "MyGame.GameConfig",
+		"--path", "Assets/Config/Demo.asset",
+	}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["action"] != "create" {
+		t.Errorf("action: got %v", (*params)["action"])
+	}
+	if (*params)["type"] != "MyGame.GameConfig" {
+		t.Errorf("type: got %v", (*params)["type"])
+	}
+	if (*params)["path"] != "Assets/Config/Demo.asset" {
+		t.Errorf("path: got %v", (*params)["path"])
+	}
+}
+
+func TestAssetCmd_CreateFolder(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"create", "--type", "Folder", "--path", "Assets/NewFolder", "--dry-run"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["type"] != "Folder" {
+		t.Errorf("type: got %v", (*params)["type"])
+	}
+	if (*params)["dry_run"] != true {
+		t.Errorf("dry_run: got %v", (*params)["dry_run"])
+	}
+}
+
+func TestAssetCmd_CreateMissingArgs(t *testing.T) {
+	send, _ := mockSend("manage_asset", t)
+	if _, err := assetCmd([]string{"create", "--type", "Foo"}, send); err == nil {
+		t.Error("expected error when --path is missing")
+	}
+	if _, err := assetCmd([]string{"create", "--path", "Assets/Foo.asset"}, send); err == nil {
+		t.Error("expected error when --type is missing")
+	}
+}
+
+// Path as a positional is also accepted — falls back when --path is absent.
+func TestAssetCmd_CreatePathAsPositional(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"create", "--type", "Folder", "Assets/NewFolder"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["path"] != "Assets/NewFolder" {
+		t.Errorf("path: got %v", (*params)["path"])
+	}
+}
+
+func TestAssetCmd_Move(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"move", "Assets/Old.prefab", "Assets/New/Moved.prefab"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["action"] != "move" {
+		t.Errorf("action: got %v", (*params)["action"])
+	}
+	if (*params)["path"] != "Assets/Old.prefab" {
+		t.Errorf("path (src): got %v", (*params)["path"])
+	}
+	if (*params)["dst"] != "Assets/New/Moved.prefab" {
+		t.Errorf("dst: got %v", (*params)["dst"])
+	}
+}
+
+func TestAssetCmd_MoveDryRun(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"move", "Assets/A.asset", "Assets/B.asset", "--dry-run"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["dry_run"] != true {
+		t.Errorf("dry_run: got %v", (*params)["dry_run"])
+	}
+}
+
+func TestAssetCmd_MoveMissingDst(t *testing.T) {
+	send, _ := mockSend("manage_asset", t)
+	if _, err := assetCmd([]string{"move", "Assets/A.asset"}, send); err == nil {
+		t.Error("expected error when destination is missing")
+	}
+}
+
+func TestAssetCmd_Delete(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"delete", "Assets/Unused.prefab"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["action"] != "delete" {
+		t.Errorf("action: got %v", (*params)["action"])
+	}
+	if (*params)["path"] != "Assets/Unused.prefab" {
+		t.Errorf("path: got %v", (*params)["path"])
+	}
+	if _, set := (*params)["permanent"]; set {
+		t.Errorf("permanent should default to unset (server default = trash), got %v", (*params)["permanent"])
+	}
+}
+
+func TestAssetCmd_DeletePermanent(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"delete", "Assets/Unused.prefab", "--permanent"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["permanent"] != true {
+		t.Errorf("permanent: got %v", (*params)["permanent"])
+	}
+}
+
+func TestAssetCmd_DeleteMissingPath(t *testing.T) {
 	send, _ := mockSend("manage_asset", t)
 	if _, err := assetCmd([]string{"delete"}, send); err == nil {
-		t.Error("expected error for unknown action")
+		t.Error("expected error when path is missing")
+	}
+}
+
+func TestAssetCmd_LabelAdd(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"label", "add", "Assets/Boss.prefab", "boss", "critical"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["action"] != "label" {
+		t.Errorf("action: got %v", (*params)["action"])
+	}
+	if (*params)["label_op"] != "add" {
+		t.Errorf("label_op: got %v", (*params)["label_op"])
+	}
+	if (*params)["path"] != "Assets/Boss.prefab" {
+		t.Errorf("path: got %v", (*params)["path"])
+	}
+	if (*params)["labels"] != "boss,critical" {
+		t.Errorf("labels: got %v", (*params)["labels"])
+	}
+}
+
+func TestAssetCmd_LabelList(t *testing.T) {
+	// list takes no labels — path is the only payload.
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"label", "list", "Assets/Boss.prefab"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["label_op"] != "list" {
+		t.Errorf("label_op: got %v", (*params)["label_op"])
+	}
+	if _, set := (*params)["labels"]; set {
+		t.Errorf("labels should be unset for list, got %v", (*params)["labels"])
+	}
+}
+
+func TestAssetCmd_LabelClear(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"label", "clear", "Assets/Boss.prefab"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["label_op"] != "clear" {
+		t.Errorf("label_op: got %v", (*params)["label_op"])
+	}
+}
+
+func TestAssetCmd_LabelSet(t *testing.T) {
+	send, params := mockSend("manage_asset", t)
+	_, err := assetCmd([]string{"label", "set", "Assets/Boss.prefab", "final"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["label_op"] != "set" {
+		t.Errorf("label_op: got %v", (*params)["label_op"])
+	}
+	if (*params)["labels"] != "final" {
+		t.Errorf("labels: got %v", (*params)["labels"])
+	}
+}
+
+func TestAssetCmd_LabelMissingArgs(t *testing.T) {
+	send, _ := mockSend("manage_asset", t)
+	if _, err := assetCmd([]string{"label"}, send); err == nil {
+		t.Error("expected error when label has no op / path")
+	}
+	// `label add` missing path must error too.
+	if _, err := assetCmd([]string{"label", "add"}, send); err == nil {
+		t.Error("expected error when label add has no path")
 	}
 }

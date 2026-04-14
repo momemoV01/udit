@@ -77,7 +77,7 @@ _udit_complete() {
             COMPREPLY=( $(compgen -W "list get schema add remove set copy" -- "$cur") )
             return ;;
         asset)
-            COMPREPLY=( $(compgen -W "find inspect dependencies references guid path" -- "$cur") )
+            COMPREPLY=( $(compgen -W "find inspect dependencies references guid path create move delete label" -- "$cur") )
             return ;;
         prefab)
             COMPREPLY=( $(compgen -W "instantiate unpack apply find-instances" -- "$cur") )
@@ -137,7 +137,11 @@ _udit() {
             _describe 'component action' subs
             return ;;
         asset)
-            subs=('find:Query assets' 'inspect:Asset metadata' 'dependencies:List deps' 'references:Reverse deps' 'guid:Path to GUID' 'path:GUID to path')
+            subs=(
+                'find:Query assets' 'inspect:Asset metadata' 'dependencies:List deps' 'references:Reverse deps'
+                'guid:Path to GUID' 'path:GUID to path'
+                'create:Create a new asset' 'move:Move/rename' 'delete:Delete (trash or permanent)' 'label:Manage labels'
+            )
             _describe 'asset action' subs
             return ;;
         prefab)
@@ -217,7 +221,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
         'scene'      { @('list', 'active', 'open', 'save', 'reload', 'tree') }
         'go'         { @('find', 'inspect', 'path', 'create', 'destroy', 'move', 'rename', 'setactive') }
         'component'  { @('list', 'get', 'schema', 'add', 'remove', 'set', 'copy') }
-        'asset'      { @('find', 'inspect', 'dependencies', 'references', 'guid', 'path') }
+        'asset'      { @('find', 'inspect', 'dependencies', 'references', 'guid', 'path', 'create', 'move', 'delete', 'label') }
         'prefab'     { @('instantiate', 'unpack', 'apply', 'find-instances') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
         'completion' { @('bash', 'zsh', 'powershell', 'fish') }
@@ -270,7 +274,7 @@ complete -c udit -n "__fish_seen_subcommand_from editor"     -a "play stop pause
 complete -c udit -n "__fish_seen_subcommand_from scene"      -a "list active open save reload tree"
 complete -c udit -n "__fish_seen_subcommand_from go"         -a "find inspect path create destroy move rename setactive"
 complete -c udit -n "__fish_seen_subcommand_from component"  -a "list get schema add remove set copy"
-complete -c udit -n "__fish_seen_subcommand_from asset"      -a "find inspect dependencies references guid path"
+complete -c udit -n "__fish_seen_subcommand_from asset"      -a "find inspect dependencies references guid path create move delete label"
 complete -c udit -n "__fish_seen_subcommand_from prefab"     -a "instantiate unpack apply find-instances"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"
 complete -c udit -n "__fish_seen_subcommand_from completion" -a "bash zsh powershell fish"

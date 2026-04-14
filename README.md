@@ -390,6 +390,47 @@ udit asset path 8c9cfa26abfee488c85f1582747f6a02
 
 Unknown paths or GUIDs return `UCI-040 AssetNotFound` — verify the identifier with `asset find` before retrying.
 
+#### Asset mutation (v0.4.x+)
+
+Create, move, delete, and label assets. All mutations accept `--dry-run` and `delete` defaults to the OS trash for recoverability.
+
+```bash
+# Create a ScriptableObject-derived asset. --path ending in '/' auto-appends
+# <TypeName>.asset; pass an explicit filename to override.
+udit asset create --type MyGame.GameConfig --path Assets/Config/
+udit asset create --type MyGame.GameConfig --path Assets/Config/Custom.asset
+
+# Folder creation uses the sentinel type "Folder".
+udit asset create --type Folder --path Assets/NewFolder
+
+# Move keeps the GUID, so existing references in the project stay valid.
+udit asset move Assets/Old.prefab Assets/New/Moved.prefab
+
+# Delete to the OS trash (recoverable, default) or permanently.
+udit asset delete Assets/Unused.prefab
+udit asset delete Assets/Unused.prefab --permanent
+
+# --permanent scans the whole project and reports how many other assets
+# reference this one (referenced_by) so the caller sees the blast radius.
+udit asset delete Assets/Shared.mat --permanent --dry-run
+
+# Labels: add / remove take one or more names, set replaces the whole set,
+# clear removes all, list is read-only.
+udit asset label add    Assets/Prefabs/Boss.prefab boss_content critical
+udit asset label remove Assets/Prefabs/Boss.prefab critical
+udit asset label list   Assets/Prefabs/Boss.prefab
+udit asset label set    Assets/Prefabs/Boss.prefab final_content
+udit asset label clear  Assets/Prefabs/Boss.prefab
+```
+
+**Undo caveat.** AssetDatabase operations (Create/Move/Delete/SetLabels) do **not** participate in Unity's scene Undo. Ctrl+Z in the Editor will not reverse them. The safety nets are `--dry-run` (preview without side effects) and `delete` defaulting to `MoveAssetToTrash` (recoverable from the OS trash). When in doubt, dry-run first.
+
+Failure modes:
+- Missing path or GUID → `UCI-040`.
+- `create --type X` where X is not a ScriptableObject-derived type (or the sentinel `Folder`) → `UCI-011` with a note on supported types. Pass a fully-qualified name (`MyGame.GameConfig`) to disambiguate against UnityEngine types.
+- Destination already exists for `create` / `move` → `UCI-011` (move first or delete).
+- Label op is not one of `add / remove / list / set / clear` → `UCI-011`.
+
 ### Prefabs
 
 Prefab operations on top of `scene` + `go` + `asset`. `instantiate` uses `PrefabUtility.InstantiatePrefab` so the scene instance keeps its link back to the asset (unlike `Object.Instantiate`), and everything goes through Unity Undo.

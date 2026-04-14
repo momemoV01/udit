@@ -14,7 +14,7 @@ import (
 // sees a string where it expects a number.
 func assetCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 	if len(args) == 0 {
-		return nil, fmt.Errorf("usage: udit asset <find|inspect|dependencies|references|guid|path>")
+		return nil, fmt.Errorf("usage: udit asset <find|inspect|dependencies|references|guid|path|create|move|delete|label>")
 	}
 
 	action := args[0]
@@ -124,8 +124,102 @@ func assetCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 			"guid":   positional[0],
 		})
 
+	case "create":
+		// `udit asset create --type <TypeName> --path <path> [--dry-run]`
+		typeName, ok := flags["type"]
+		if !ok {
+			return nil, fmt.Errorf("usage: udit asset create --type <TypeName> --path <path> [--dry-run]")
+		}
+		path, ok := flags["path"]
+		if !ok {
+			// Fall back to accepting the path as a positional so
+			// `create --type X Assets/Foo.asset` also works.
+			path = firstAssetPathPositional(positional)
+			if path == "" {
+				return nil, fmt.Errorf("asset create: --path or a positional <path> is required")
+			}
+		}
+		params := map[string]interface{}{
+			"action": "create",
+			"type":   typeName,
+			"path":   path,
+		}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_asset", params)
+
+	case "move":
+		// `udit asset move <src> <dst> [--dry-run]`
+		if len(positional) < 2 {
+			return nil, fmt.Errorf("usage: udit asset move <src-path> <dst-path> [--dry-run]")
+		}
+		params := map[string]interface{}{
+			"action": "move",
+			"path":   positional[0],
+			"dst":    positional[1],
+		}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_asset", params)
+
+	case "delete":
+		// `udit asset delete <path> [--permanent] [--dry-run]`
+		path := firstAssetPathPositional(positional)
+		if path == "" {
+			return nil, fmt.Errorf("usage: udit asset delete <path> [--permanent] [--dry-run]")
+		}
+		params := map[string]interface{}{
+			"action": "delete",
+			"path":   path,
+		}
+		if _, perm := flags["permanent"]; perm {
+			params["permanent"] = true
+		}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_asset", params)
+
+	case "label":
+		// `udit asset label <add|remove|list|set|clear> <path> [label...]`
+		// The label op is a positional right after 'label', the path is
+		// next, and the remaining positionals are label names. This mirrors
+		// the ROADMAP grammar and keeps the common path-then-op pair
+		// together for agent readability.
+		if len(positional) < 2 && !(len(positional) >= 1 && positional[0] == "list") {
+			return nil, fmt.Errorf("usage: udit asset label <add|remove|list|set|clear> <path> [labels...]")
+		}
+		labelOp := positional[0]
+		var labelPath string
+		var labels []string
+		if len(positional) >= 2 {
+			labelPath = positional[1]
+			if len(positional) > 2 {
+				labels = positional[2:]
+			}
+		}
+		if labelPath == "" {
+			return nil, fmt.Errorf("asset label: path is required")
+		}
+		params := map[string]interface{}{
+			"action":   "label",
+			"label_op": labelOp,
+			"path":     labelPath,
+		}
+		if len(labels) > 0 {
+			// Join with comma to match the C# parser. The comma is safe
+			// because Unity rejects commas in label names anyway.
+			params["labels"] = strings.Join(labels, ",")
+		}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_asset", params)
+
 	default:
-		return nil, fmt.Errorf("unknown asset action: %s\nAvailable: find, inspect, dependencies, references, guid, path", action)
+		return nil, fmt.Errorf("unknown asset action: %s\nAvailable: find, inspect, dependencies, references, guid, path, create, move, delete, label", action)
 	}
 }
 

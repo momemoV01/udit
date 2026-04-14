@@ -415,6 +415,10 @@ Assets:
   asset references <path> [--limit N]               Who references this asset (full scan)
   asset guid <path>                                 Path -> Unity GUID
   asset path <guid>                                 Unity GUID -> path
+  asset create --type <T> --path <p>                Create ScriptableObject (or --type Folder)
+  asset move <src> <dst>                            Move/rename (keeps GUID, references survive)
+  asset delete <path> [--permanent]                 Trash (default) or permanent delete
+  asset label <add|remove|list|set|clear> <path> [labels]  Manage asset labels
 
 Prefabs:
   prefab instantiate <path> [--parent go:P] [--pos x,y,z]   Spawn a prefab instance
@@ -718,7 +722,7 @@ Notes:
     UCI-011 with guidance (valid field names, supported property types).
 `)
 	case "asset":
-		fmt.Print(`Usage: udit asset <find|inspect|dependencies|references|guid|path> [options]
+		fmt.Print(`Usage: udit asset <find|inspect|dependencies|references|guid|path|create|move|delete|label> [options]
 
 Query project assets. All paths are project-relative (Assets/... or
 Packages/...), all GUIDs are Unity's 32-char hex identifiers.
@@ -754,15 +758,51 @@ Subcommands:
   guid <path>               Path -> GUID lookup.
   path <guid>               GUID -> path lookup.
 
+Mutation subcommands (all support --dry-run; NOT routed through Unity Undo —
+AssetDatabase writes straight to disk. Safety nets are --dry-run preview and
+'delete' defaulting to the OS trash):
+  create --type <TypeName> --path <path>
+      Create a new asset. ScriptableObject-derived types supported (pass a
+      fully-qualified name like "MyGame.GameConfig" to disambiguate against
+      UnityEngine types) plus the special sentinel "Folder" for directory
+      creation. --path ending in '/' or resolving to an existing folder
+      auto-appends "<TypeName>.asset".
+  move <src> <dst>
+      Rename or relocate. GUID is preserved so existing references keep
+      resolving. Destination folder must exist.
+  delete <path> [--permanent]
+      Default sends the asset to the OS trash (AssetDatabase.
+      MoveAssetToTrash — recoverable). --permanent uses
+      AssetDatabase.DeleteAsset and scans the project first to report how
+      many other assets reference this one, so the caller sees the blast
+      radius.
+  label <op> <path> [labels...]
+      Manage AssetDatabase labels. Sub-ops:
+        add     add one or more labels (union with current)
+        remove  remove one or more labels
+        list    read-only, returns current labels
+        set     replace the whole label set
+        clear   remove all labels
+      Labels arrive from the CLI as a comma-joined string; the C# side
+      splits them back.
+
 Examples:
   udit asset find --type Prefab
-  udit asset find --type Texture2D --folder Assets/Art --limit 20
-  udit asset find --label boss --name "*Enemy*"
   udit asset inspect Assets/Materials/Player.mat
   udit asset dependencies Assets/Scenes/Main.unity --recursive
   udit asset references Assets/Prefabs/Enemy.prefab
   udit asset guid Assets/Scenes/SampleScene.unity
   udit asset path 8c9cfa26abfee488c85f1582747f6a02
+  udit asset create --type MyGame.GameConfig --path Assets/Config/
+  udit asset create --type Folder --path Assets/NewFolder
+  udit asset move Assets/Old.prefab Assets/New/Moved.prefab
+  udit asset delete Assets/Unused.prefab
+  udit asset delete Assets/Unused.prefab --permanent
+  udit asset label add Assets/Prefabs/Boss.prefab boss_content critical
+  udit asset label remove Assets/Prefabs/Boss.prefab boss_content
+  udit asset label list Assets/Prefabs/Boss.prefab
+  udit asset label set Assets/Prefabs/Boss.prefab final_content
+  udit asset label clear Assets/Prefabs/Boss.prefab
 
 Notes:
   - Unknown paths or GUIDs -> UCI-040 AssetNotFound (see docs/ERROR_CODES.md).
@@ -770,6 +810,9 @@ Notes:
     when possible, and always set --limit on larger projects.
   - 'inspect' on a Prefab returns just a top-level summary (root components,
     child count). Use 'scene open' or 'scene tree' to walk the hierarchy.
+  - Asset mutations do NOT register with Unity Undo. Ctrl+Z in the Editor
+    will not reverse them. Always run with --dry-run first when you are
+    uncertain, and prefer 'delete' over 'delete --permanent' when possible.
 `)
 	case "prefab":
 		fmt.Print(`Usage: udit prefab <instantiate|unpack|apply|find-instances> [options]
