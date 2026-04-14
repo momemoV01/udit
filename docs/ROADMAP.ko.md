@@ -641,6 +641,7 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] 실제 Unity 프로젝트에 Connector 설치 + 연결 검증 (port 8590, 2026-04-14)
 - [x] `.claude/skills/unity-verify/SKILL.md` 작성 (4개 스킬 포함)
 - [x] Phase 1 전체 (1.1 ~ 1.5)
-- [ ] **v0.2.0 태그 push + Release 검증**
+- [x] v0.2.0 태그 push + Release 검증 (2026-04-14)
+- [x] v0.2.1 patch: sentinel markers + Node 20 actions 완전 제거 + 실전 검증
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 위해)
-- [ ] Phase 2 (Observe) 착수 — `scene` 명령부터
+- [ ] **Phase 2 (Observe) 착수** — Stable ID 인프라 → `scene` 명령부터
