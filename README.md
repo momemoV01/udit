@@ -489,6 +489,28 @@ Constraints worth knowing:
 - **Domain reload wipes the handle.** Script recompiles tear down the connector's static state, so a mid-transaction reload leaves any partial mutations on the Undo stack but drops the transaction itself. `tx status` will report no active tx afterward — start a new one if you intended to keep grouping.
 - **AssetDatabase mutations do not participate.** `asset create/move/delete/label` write straight to disk and can't be collapsed into a scene-Undo group. Inside a transaction they still execute, but they are not reversible by commit/rollback the way scene mutations are.
 
+### Project
+
+Pre-build health check and project inspection. First block of the Automate phase — agents use these to answer "what is this project?" and "is it healthy enough to build?" before kicking off heavier operations.
+
+```bash
+# Unity version, build target, packages, scenes in build, asset counts
+udit project info
+
+# Scan prefabs for missing script references, flag empty Build Settings
+udit project validate                   # Assets/ only (fast)
+udit project validate --include-packages  # also scan Packages/
+
+# validate + player-settings + compile state check
+udit project preflight
+```
+
+`project info` returns a fast summary without the async `PackageManager.Client.List` — packages come straight from `Packages/manifest.json` (declared versions). Stats come from `AssetDatabase.FindAssets` counts (no asset loads), so even on a 12k-asset project the response arrives in a few hundred ms.
+
+`project validate` walks every prefab and uses `GameObjectUtility.GetMonoBehavioursWithMissingScriptCount` to count broken references. Response includes `scan_ms` so agents can decide whether to cache between runs. `--limit` caps issues per severity at 100 by default.
+
+`project preflight` is `validate` + pre-build hygiene: warns on empty `productName`, `"DefaultCompany"` default, active compilation state. Use before `udit build player` (coming in a later Phase 4 slice) to catch empty names, missing scenes, or compile hiccups up front.
+
 ### Console Logs
 
 ```bash

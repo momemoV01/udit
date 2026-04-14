@@ -489,6 +489,28 @@ udit tx status
 - **도메인 리로드가 핸들을 지움.** 스크립트 재컴파일은 connector static 상태를 내리므로, 트랜잭션 중간에 리로드가 일어나면 부분 mutation은 Undo 스택에 남되 트랜잭션 핸들 자체는 사라진다. `tx status`가 "no active"로 바뀌므로, 계속 묶고 싶었으면 새로 `begin`.
 - **AssetDatabase 변경은 참여 안 함.** `asset create/move/delete/label`은 디스크에 바로 쓰고 씬 Undo 그룹에 묶일 수 없음. 트랜잭션 안에서 실행은 되지만 commit/rollback으로 되돌릴 수는 없음 (씬 mutation과 달리).
 
+### Project (프로젝트 조회 + 헬스체크)
+
+빌드 전 헬스체크 + 프로젝트 인스펙션. Automate 단계의 첫 블록 — "이 프로젝트가 뭐지?" / "빌드 걸기 전에 문제없나?"를 빠르게 답해준다.
+
+```bash
+# Unity 버전, 빌드 타겟, 패키지, 빌드씬, 에셋 카운트
+udit project info
+
+# Prefab 전체에서 missing script scan + Build Settings 체크
+udit project validate                   # Assets/ only (빠름)
+udit project validate --include-packages  # Packages/도 포함
+
+# validate + player-settings + 컴파일 상태 체크
+udit project preflight
+```
+
+`project info`는 async `PackageManager.Client.List`를 쓰지 않고 `Packages/manifest.json`을 직접 읽어서 빠르다 (선언된 버전만, resolved graph 필요하면 `exec`로 우회). 에셋 카운트는 `AssetDatabase.FindAssets`로, 12k 에셋 프로젝트에서도 수백 ms 안에 응답.
+
+`project validate`는 모든 prefab을 순회하며 `GameObjectUtility.GetMonoBehavioursWithMissingScriptCount`로 깨진 참조를 센다. 응답에 `scan_ms` 포함 — 에이전트가 캐싱 여부 판단 가능. `--limit`은 severity당 기본 100.
+
+`project preflight`는 `validate` + 빌드 전 위생 체크: 빈 `productName`, 기본값 `"DefaultCompany"`, 컴파일 중 상태 경고. 후속 slice에서 추가될 `udit build player` 걸기 전에 이름 누락 / 씬 누락 / 컴파일 문제를 먼저 잡는 용도.
+
 ### 콘솔 로그
 
 ```bash

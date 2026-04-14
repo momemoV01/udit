@@ -123,6 +123,8 @@ func Execute() error {
 		resp, err = prefabCmd(subArgs, send)
 	case "tx":
 		resp, err = txCmd(subArgs, send)
+	case "project":
+		resp, err = projectCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -433,6 +435,11 @@ Transactions:
   tx commit [--name "..."]         Merge all mutations since begin into one group
   tx rollback                      Revert every mutation since begin
   tx status                        Report whether a transaction is active
+
+Project:
+  project info                     Unity version, packages, scenes, stats
+  project validate [--include-packages]  Scan for missing scripts / build-settings issues
+  project preflight                Validate + player-settings + compile state check
 
 Console:
   console                       Read error & warning logs (default)
@@ -930,6 +937,62 @@ Examples:
   udit go create --name Candidate
   udit go move go:abcd1234 --parent go:5678abcd
   udit tx rollback                             # every change since begin is undone
+`)
+	case "project":
+		fmt.Print(`Usage: udit project <info|validate|preflight> [options]
+
+Project-level inspection. First Automate-phase block: agents use these
+to answer "what is this project?" and "is it healthy enough to build?"
+before kicking off heavier operations.
+
+Subcommands:
+  info
+      Summary of the project:
+        - unity_version, active build target, render pipeline
+        - product_name, company_name, bundle_version
+        - scripting_backend, color_space
+        - scenes_in_build (with enabled flag + build index)
+        - packages (declared versions from Packages/manifest.json)
+        - stats: total_assets, cs_files_in_assets, scenes, prefabs,
+          materials, textures
+      Fast — no async PackageManager calls, just AssetDatabase counts.
+
+  validate
+      Scan the project for issues an agent should know about:
+        - Prefab assets with missing script references (MonoBehaviour
+          slots that point at deleted types)
+        - Build Settings with no enabled scenes
+      Response includes ok (bool), errors/warnings count, scan_ms, and
+      an issues array with { severity, kind, path, message, ... } per
+      finding.
+    --include-packages    Also scan Packages/. Default is Assets-only
+                          because Packages/ is usually clean + scan is
+                          slower.
+    --limit <N>           Max issues per severity (default 100).
+
+  preflight
+      validate + build-readiness checks:
+        - Compile state (warn if actively compiling)
+        - PlayerSettings.productName empty
+        - PlayerSettings.companyName is "DefaultCompany"
+      Use before ` + "`udit build player`" + ` to catch empty names /
+      missing scenes / compile hiccups up front.
+
+Examples:
+  udit project info
+  udit project info --json
+  udit project validate
+  udit project validate --include-packages
+  udit project preflight
+
+Notes:
+  - Scans walk every prefab and load it — on large projects expect
+    1-5s per 1000 prefabs. scan_ms is reported so agents can decide
+    whether to cache results between runs.
+  - info does NOT wait on PackageManager.Client.List; package info is
+    read straight from manifest.json. For resolved package graphs
+    (including transitive dependencies), fall back to exec with
+    PackageManager.Client.List.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]
