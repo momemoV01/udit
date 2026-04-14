@@ -66,6 +66,9 @@ func TestSplitArgs(t *testing.T) {
 		{"project flag", []string{"--project", "myproj", "status"}, []string{"--project", "myproj"}, []string{"status"}},
 		{"timeout flag", []string{"exec", "--timeout", "5000", "Time.time"}, []string{"--timeout", "5000"}, []string{"exec", "Time.time"}},
 		{"multiple global flags", []string{"--port", "8080", "--timeout", "3000", "exec", "code"}, []string{"--port", "8080", "--timeout", "3000"}, []string{"exec", "code"}},
+		{"json switch alone", []string{"--json", "status"}, []string{"--json"}, []string{"status"}},
+		{"json with port value flag", []string{"--json", "--port", "8590", "list"}, []string{"--json", "--port", "8590"}, []string{"list"}},
+		{"json after subcommand", []string{"console", "--json"}, []string{"--json"}, []string{"console"}},
 	}
 
 	for _, tt := range tests {

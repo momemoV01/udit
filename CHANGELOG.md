@@ -15,6 +15,28 @@ All notable changes to **udit** are documented here. This project follows [Seman
   or crashing mid-reload. `list` (read-only) remains allowed.
 
 ### Added
+- **Global `--json` flag** (Phase 1.2). When set, every command emits a
+  uniform machine-readable envelope to stdout (success) or stderr (failure):
+  ```json
+  {
+    "success": true,
+    "command": "status",
+    "message": "Unity (port 8590): ready",
+    "data": {...},
+    "error_code": "UCI-...",   // omitted on success
+    "unity": {                 // CLI-side meta — port, project, state, version
+      "port": 8590,
+      "project": "E:/Games/MyGame",
+      "state": "ready",
+      "version": "6000.4.2f1"
+    }
+  }
+  ```
+  CLI-side failures (no Unity running, network errors, timeouts) are
+  classified into `UCI-001`/`UCI-002`/`UCI-003` via `classifyGoError`.
+  Connector-side errors propagate their own code (Phase 1.3) through
+  `client.CommandResponse.ErrorCode`. Legacy text mode is the default
+  and unchanged. New tests cover `--json` parsing in `splitArgs`.
 - **Error code registry** (Phase 1.3). `ErrorResponse` now carries an optional
   `error_code` field (serialized as `error_code`, omitted when null) so agents
   can branch on a stable identifier instead of fragile message-text matching.

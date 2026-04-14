@@ -18,12 +18,14 @@ var (
 	flagPort    int
 	flagProject string
 	flagTimeout int
+	flagJSON    bool
 )
 
 func Execute() error {
 	flag.IntVar(&flagPort, "port", 0, "Override Unity instance port")
 	flag.StringVar(&flagProject, "project", "", "Select Unity instance by project path")
 	flag.IntVar(&flagTimeout, "timeout", 120000, "Request timeout in milliseconds")
+	flag.BoolVar(&flagJSON, "json", false, "Emit machine-readable JSON envelope to stdout/stderr")
 
 	flag.Usage = func() { printHelp() }
 
@@ -66,20 +68,27 @@ func Execute() error {
 	case "status":
 		inst, err := client.DiscoverInstance(flagProject, flagPort)
 		if err != nil {
-			return err
+			reportError(err, "status", nil, flagJSON)
+			os.Exit(1)
 		}
-		statusErr := statusCmd(inst)
+		statusErr := statusCmd(inst, flagJSON)
 		printUpdateNotice()
-		return statusErr
+		if statusErr != nil {
+			reportError(statusErr, "status", inst, flagJSON)
+			os.Exit(1)
+		}
+		return nil
 	}
 
 	inst, err := client.DiscoverInstance(flagProject, flagPort)
 	if err != nil {
-		return err
+		reportError(err, category, nil, flagJSON)
+		os.Exit(1)
 	}
 
 	if err := waitForAlive(inst.Port, flagTimeout); err != nil {
-		return err
+		reportError(err, category, inst, flagJSON)
+		os.Exit(1)
 	}
 
 	timeout := flagTimeout
@@ -113,10 +122,11 @@ func Execute() error {
 	}
 
 	if err != nil {
-		return err
+		reportError(err, category, inst, flagJSON)
+		os.Exit(1)
 	}
 
-	printResponse(resp)
+	printResponse(resp, category, inst, flagJSON)
 
 	printUpdateNotice()
 
@@ -131,7 +141,17 @@ func Execute() error {
 // Injected into each command function so they can be tested without a real Unity connection.
 type sendFn func(command string, params interface{}) (*client.CommandResponse, error)
 
-func printResponse(resp *client.CommandResponse) {
+// printResponse renders a CommandResponse to stdout/stderr.
+//
+//	useJSON=true: uniform jsonOutput envelope (see cmd/output.go)
+//	useJSON=false: legacy text — pretty-printed data on success, "Error: ..."
+//	               on failure (preserves newlines for tree-style output)
+func printResponse(resp *client.CommandResponse, command string, inst *client.Instance, useJSON bool) {
+	if useJSON {
+		emitJSONResponse(resp, command, inst)
+		return
+	}
+
 	if !resp.Success {
 		msg := resp.Message
 		if msg == "" {
@@ -274,17 +294,26 @@ func readStdinIfPiped(args []string) []string {
 	return append([]string{code}, args...)
 }
 
-// splitArgs separates global flags (--port, --project, --timeout) from subcommand args.
-// Global flags must be parsed by flag.CommandLine before the subcommand runs.
+// splitArgs separates global flags from subcommand args.
+//
+//	Value flags  : --port N, --project PATH, --timeout MS  (consume next arg)
+//	Switch flags : --json                                  (no value)
+//
+// Anything else (including unknown flags, subcommand-local flags, and
+// positional args) goes through to the subcommand. flag.CommandLine then
+// parses just the global slice.
 func splitArgs(args []string) (flags, commands []string) {
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--port" || args[i] == "--project" || args[i] == "--timeout" {
+		switch args[i] {
+		case "--port", "--project", "--timeout":
 			flags = append(flags, args[i])
 			if i+1 < len(args) {
 				i++
 				flags = append(flags, args[i])
 			}
-		} else {
+		case "--json":
+			flags = append(flags, args[i])
+		default:
 			commands = append(commands, args[i])
 		}
 	}

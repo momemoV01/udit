@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -8,14 +9,43 @@ import (
 	"github.com/momemoV01/udit/internal/client"
 )
 
-func statusCmd(inst *client.Instance) error {
+func statusCmd(inst *client.Instance, useJSON bool) error {
 	status, err := readStatus(inst.Port)
 	if err != nil {
 		return fmt.Errorf("no status for port %d — Unity may not be running", inst.Port)
 	}
 
 	age := time.Since(time.UnixMilli(status.Timestamp))
-	if age > 3*time.Second {
+	stale := age > 3*time.Second
+
+	if useJSON {
+		// status synthesizes its own response — no Connector round-trip.
+		// Emit through the same envelope so agents see one shape everywhere.
+		state := status.State
+		if stale {
+			state = "not_responding"
+		}
+		statusInst := *status
+		statusInst.State = state
+		data, _ := json.Marshal(map[string]interface{}{
+			"state":            state,
+			"project_path":     status.ProjectPath,
+			"port":             status.Port,
+			"pid":              status.PID,
+			"unity_version":    status.UnityVersion,
+			"heartbeat_age_ms": age.Milliseconds(),
+			"compile_errors":   status.CompileErrors,
+		})
+		resp := &client.CommandResponse{
+			Success: true,
+			Message: fmt.Sprintf("Unity (port %d): %s", status.Port, state),
+			Data:    data,
+		}
+		emitJSONResponse(resp, "status", &statusInst)
+		return nil
+	}
+
+	if stale {
 		fmt.Fprintf(os.Stderr, "Unity (port %d): not responding (last heartbeat %s ago)\n", status.Port, age.Truncate(time.Second))
 		return nil
 	}

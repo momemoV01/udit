@@ -31,10 +31,15 @@ type CommandRequest struct {
 
 // CommandResponse is the JSON body returned by Unity.
 // Data is raw JSON so callers can unmarshal into any shape.
+//
+// ErrorCode is a stable identifier (e.g. "UCI-010") that the Connector
+// emits on error paths. Empty on success and on Connector code that
+// hasn't been classified yet. See docs/ERROR_CODES.md (Phase 1.3).
 type CommandResponse struct {
-	Success bool            `json:"success"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data,omitempty"`
+	Success   bool            `json:"success"`
+	Message   string          `json:"message"`
+	ErrorCode string          `json:"error_code,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
 }
 
 // isProcessDead returns true only when the process is confirmed to not exist.
