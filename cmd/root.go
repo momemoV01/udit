@@ -73,6 +73,8 @@ func Execute() error {
 		return nil
 	case "update":
 		return updateCmd(subArgs)
+	case "completion":
+		return completionCmd(subArgs)
 	case "status":
 		inst, err := client.DiscoverInstance(flagProject, flagPort)
 		if err != nil {
@@ -430,6 +432,11 @@ Status:
 Update:
   update                        Update to the latest version
   update --check                Check for updates without installing
+
+Completion:
+  completion <shell>            Print shell completion script (bash, zsh,
+                                powershell, fish). Source it or pipe to a
+                                profile/completion file.
 
 Global Options:
   --port <N>          Connect to specific Unity port (skip auto-discovery)

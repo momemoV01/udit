@@ -15,6 +15,21 @@ All notable changes to **udit** are documented here. This project follows [Seman
   or crashing mid-reload. `list` (read-only) remains allowed.
 
 ### Added
+- **Shell completion** (Phase 1.5). New `udit completion <shell>` command
+  emits a static completion script for `bash`, `zsh`, `powershell`, or `fish`.
+  Tab-completes top-level commands, sub-actions for `editor` / `profiler` /
+  `completion`, and global flags (`--port` / `--project` / `--timeout` /
+  `--json` / `--help`). Custom `[UditTool]` handlers aren't auto-discovered
+  because completion runs without a live Unity to query — the static built-in
+  list covers daily typing.
+
+  Install examples:
+  ```
+  bash:       source <(udit completion bash)
+  zsh:        source <(udit completion zsh)
+  powershell: udit completion powershell | Out-String | Invoke-Expression
+  fish:       udit completion fish > ~/.config/fish/completions/udit.fish
+  ```
 - **`.udit.yaml` config file** (Phase 1.4). Walks from cwd upward (stopping
   at `$HOME` exclusive, then filesystem root) and applies project-wide
   defaults. CLI flags always win over config; config wins over built-in
