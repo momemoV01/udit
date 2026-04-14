@@ -75,9 +75,7 @@ func mergeExecUsings(params map[string]interface{}, cfg *Config) map[string]inte
 	case string:
 		// "A,B,C" form — leave it alone; the C# side splits commas itself.
 		// Build a fresh combined list anyway.
-		for _, p := range splitCommaList(v) {
-			existing = append(existing, p)
-		}
+		existing = append(existing, splitCommaList(v)...)
 	}
 	seen := map[string]bool{}
 	merged := make([]string, 0, len(cfg.Exec.Usings)+len(existing))
