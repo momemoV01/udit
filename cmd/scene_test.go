@@ -126,3 +126,91 @@ func TestSceneCmd_UnknownAction(t *testing.T) {
 		t.Error("expected error for unknown action")
 	}
 }
+
+func TestSceneCmd_Tree(t *testing.T) {
+	send, params := mockSend("manage_scene", t)
+	if _, err := sceneCmd([]string{"tree"}, send); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["action"] != "tree" {
+		t.Errorf("expected action=tree, got %v", (*params)["action"])
+	}
+	// No depth or active-only → omit both so the server applies its defaults
+	// (unlimited depth, include inactive). Sending explicit defaults would be
+	// a lie if the server default ever changes.
+	if _, set := (*params)["depth"]; set {
+		t.Errorf("depth should not be set when flag omitted, got %v", (*params)["depth"])
+	}
+	if _, set := (*params)["include_inactive"]; set {
+		t.Errorf("include_inactive should not be set when flag omitted, got %v", (*params)["include_inactive"])
+	}
+}
+
+func TestSceneCmd_TreeWithDepth(t *testing.T) {
+	send, params := mockSend("manage_scene", t)
+	if _, err := sceneCmd([]string{"tree", "--depth", "3"}, send); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["depth"] != 3 {
+		t.Errorf("expected depth=3 (int), got %v (%T)", (*params)["depth"], (*params)["depth"])
+	}
+}
+
+func TestSceneCmd_TreeWithDepthZero(t *testing.T) {
+	// depth=0 is a meaningful value (roots only), so it must survive the
+	// flag parser's "0 is falsy" temptation. This guards against a regression.
+	send, params := mockSend("manage_scene", t)
+	if _, err := sceneCmd([]string{"tree", "--depth", "0"}, send); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["depth"] != 0 {
+		t.Errorf("expected depth=0, got %v", (*params)["depth"])
+	}
+}
+
+func TestSceneCmd_TreeWithNegativeDepth(t *testing.T) {
+	// Negative = unlimited on the C# side. parseSubFlags treats "-1" as a
+	// value (not a flag name) only if preceded by --depth; verify the round-trip.
+	send, params := mockSend("manage_scene", t)
+	_, err := sceneCmd([]string{"tree", "--depth", "-1"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["depth"] != -1 {
+		t.Errorf("expected depth=-1, got %v", (*params)["depth"])
+	}
+}
+
+func TestSceneCmd_TreeInvalidDepth(t *testing.T) {
+	send, _ := mockSend("manage_scene", t)
+	if _, err := sceneCmd([]string{"tree", "--depth", "deep"}, send); err == nil {
+		t.Error("expected error for non-integer --depth")
+	}
+}
+
+func TestSceneCmd_TreeActiveOnly(t *testing.T) {
+	send, params := mockSend("manage_scene", t)
+	if _, err := sceneCmd([]string{"tree", "--active-only"}, send); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["include_inactive"] != false {
+		t.Errorf("expected include_inactive=false, got %v", (*params)["include_inactive"])
+	}
+}
+
+func TestSceneCmd_TreeAllOptions(t *testing.T) {
+	send, params := mockSend("manage_scene", t)
+	_, err := sceneCmd([]string{"tree", "--depth", "2", "--active-only"}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["action"] != "tree" {
+		t.Errorf("expected action=tree, got %v", (*params)["action"])
+	}
+	if (*params)["depth"] != 2 {
+		t.Errorf("expected depth=2, got %v", (*params)["depth"])
+	}
+	if (*params)["include_inactive"] != false {
+		t.Errorf("expected include_inactive=false, got %v", (*params)["include_inactive"])
+	}
+}

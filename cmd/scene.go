@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/momemoV01/udit/internal/client"
@@ -13,7 +14,7 @@ import (
 // stays a thin pass-through.
 func sceneCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 	if len(args) == 0 {
-		return nil, fmt.Errorf("usage: udit scene <list|active|open|save|reload>")
+		return nil, fmt.Errorf("usage: udit scene <list|active|open|save|reload|tree>")
 	}
 
 	action := args[0]
@@ -49,8 +50,29 @@ func sceneCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 			"force":  force,
 		})
 
+	case "tree":
+		params := map[string]interface{}{"action": "tree"}
+		// Parse --depth as a typed int so the C# side can coerce it
+		// directly. Any non-numeric value is a user error — surface it
+		// here rather than silently sending a string to Unity.
+		if d, ok := flags["depth"]; ok {
+			n, err := strconv.Atoi(d)
+			if err != nil {
+				return nil, fmt.Errorf("--depth must be an integer, got %q", d)
+			}
+			params["depth"] = n
+		}
+		// --active-only is the inverse of the server-side include_inactive
+		// default (true). We translate here so the CLI surface reads
+		// positively ("show me only active") while the tool param stays a
+		// boolean with a sensible default.
+		if _, activeOnly := flags["active-only"]; activeOnly {
+			params["include_inactive"] = false
+		}
+		return send("manage_scene", params)
+
 	default:
-		return nil, fmt.Errorf("unknown scene action: %s\nAvailable: list, active, open, save, reload", action)
+		return nil, fmt.Errorf("unknown scene action: %s\nAvailable: list, active, open, save, reload, tree", action)
 	}
 }
 

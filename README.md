@@ -198,9 +198,25 @@ udit scene save
 
 # Reload the active scene, discarding unsaved edits (requires --force when dirty)
 udit scene reload --force
+
+# Dump the active scene hierarchy as a JSON tree with stable IDs
+udit scene tree --depth 3
+udit scene tree --active-only --json
 ```
 
 **Dirty-scene guard.** `scene open` and `scene reload` refuse to run when the current scene has unsaved changes. Pass `--force` to discard, or call `scene save` first. Both commands are also blocked while Unity is in play mode.
+
+**Stable IDs.** Every GameObject in `scene tree` gets a `go:XXXXXXXX` id that is a hash of Unity's `GlobalObjectId`. The id is deterministic across Editor restarts, so an agent can save results from a prior session and resolve them later (once `go inspect` ships in a follow-up slice). Example `roots` entry:
+
+```json
+{
+  "id": "go:9598abb1",
+  "name": "Main Camera",
+  "active": true,
+  "components": ["Transform", "Camera", "AudioListener"],
+  "children": []
+}
+```
 
 ### Console Logs
 

@@ -68,7 +68,7 @@ _udit_complete() {
             COMPREPLY=( $(compgen -W "play stop pause refresh" -- "$cur") )
             return ;;
         scene)
-            COMPREPLY=( $(compgen -W "list active open save reload" -- "$cur") )
+            COMPREPLY=( $(compgen -W "list active open save reload tree" -- "$cur") )
             return ;;
         profiler)
             COMPREPLY=( $(compgen -W "hierarchy enable disable status clear" -- "$cur") )
@@ -105,7 +105,7 @@ _udit() {
             _describe 'editor action' subs
             return ;;
         scene)
-            subs=('list:List scenes' 'active:Describe active scene' 'open:Open scene' 'save:Save open scenes' 'reload:Reload active scene')
+            subs=('list:List scenes' 'active:Describe active scene' 'open:Open scene' 'save:Save open scenes' 'reload:Reload active scene' 'tree:Dump hierarchy tree')
             _describe 'scene action' subs
             return ;;
         profiler)
@@ -174,7 +174,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
 
     $candidates = switch ($previous) {
         'editor'     { @('play', 'stop', 'pause', 'refresh') }
-        'scene'      { @('list', 'active', 'open', 'save', 'reload') }
+        'scene'      { @('list', 'active', 'open', 'save', 'reload', 'tree') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
         'completion' { @('bash', 'zsh', 'powershell', 'fish') }
         '--port'     { @() }
@@ -219,7 +219,7 @@ complete -c udit -n "__fish_use_subcommand" -a "version"     -d "Show version"
 complete -c udit -n "__fish_use_subcommand" -a "completion"  -d "Generate shell completion"
 
 complete -c udit -n "__fish_seen_subcommand_from editor"     -a "play stop pause refresh"
-complete -c udit -n "__fish_seen_subcommand_from scene"      -a "list active open save reload"
+complete -c udit -n "__fish_seen_subcommand_from scene"      -a "list active open save reload tree"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"
 complete -c udit -n "__fish_seen_subcommand_from completion" -a "bash zsh powershell fish"
 

@@ -199,9 +199,25 @@ udit scene save
 
 # 활성 씬을 다시 로드해 변경사항 폐기 (dirty면 --force 필요)
 udit scene reload --force
+
+# 활성 씬 하이어라키를 stable ID가 포함된 JSON 트리로 덤프
+udit scene tree --depth 3
+udit scene tree --active-only --json
 ```
 
 **Dirty 가드.** 활성 씬에 저장되지 않은 변경사항이 있을 때 `scene open`과 `scene reload`는 실행을 거부한다. 버리려면 `--force`를 붙이고, 보존하려면 먼저 `scene save`를 호출한다. 두 명령 모두 플레이 모드 중에는 차단된다.
+
+**Stable ID.** `scene tree`의 모든 GameObject는 Unity `GlobalObjectId`를 해시한 `go:XXXXXXXX` id를 가진다. Editor를 재시작해도 동일 GO는 동일 id를 얻는 결정적 포맷이므로, 에이전트가 이전 세션의 결과를 저장했다가 나중에 재조회할 수 있다 (후속 slice에서 `go inspect`가 들어오면 완성). 예시 `roots` 항목:
+
+```json
+{
+  "id": "go:9598abb1",
+  "name": "Main Camera",
+  "active": true,
+  "components": ["Transform", "Camera", "AudioListener"],
+  "children": []
+}
+```
 
 ### 콘솔 로그
 

@@ -374,6 +374,8 @@ Scene:
   scene open <path> [--force]   Open a scene (use --force to discard unsaved changes)
   scene save                    Save all open scenes that are dirty
   scene reload [--force]        Reload the active scene (use --force to discard changes)
+  scene tree [--depth N]        Dump active scene hierarchy as a JSON tree with go: IDs
+  scene tree --active-only      Skip inactive GameObjects
 
 Console:
   console                       Read error & warning logs (default)
@@ -485,7 +487,7 @@ Examples:
   udit editor refresh --compile
 `)
 	case "scene":
-		fmt.Print(`Usage: udit scene <list|active|open|save|reload> [options]
+		fmt.Print(`Usage: udit scene <list|active|open|save|reload|tree> [options]
 
 Subcommands:
   list                Enumerate every scene asset in the project, including
@@ -499,6 +501,15 @@ Subcommands:
                       which scenes were actually written.
   reload              Re-open the active scene, discarding unsaved edits.
     --force           Required when the active scene has unsaved changes.
+  tree                Dump the active scene hierarchy as a JSON tree. Each
+                      node has { id (go:XXXXXXXX), name, active, components,
+                      children }. The id is stable across Editor restarts and
+                      can be passed to later commands (scene tree -> go inspect
+                      once the go namespace ships).
+    --depth N         Max recursion depth. 0 = roots only, any negative value
+                      or omitted = unlimited. Default: unlimited.
+    --active-only     Skip inactive GameObjects and their whole subtrees.
+                      Default: include inactive (flagged via "active": false).
 
 Examples:
   udit scene list
@@ -507,11 +518,14 @@ Examples:
   udit scene open Assets/Scenes/Menu.unity --force
   udit scene save
   udit scene reload --force
+  udit scene tree --depth 3
+  udit scene tree --active-only --json
 
 Notes:
   - Scene paths are project-relative (Assets/... or Packages/...).
   - Open / reload are blocked while Unity is in play mode.
   - Build index comes from Build Settings; -1 means the scene is not enabled.
+  - tree response size grows with hierarchy — use --depth on large scenes.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

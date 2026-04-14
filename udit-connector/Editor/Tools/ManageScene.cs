@@ -1,17 +1,19 @@
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
+using UditConnector.Tools.Common;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace UditConnector.Tools
 {
-    [UditTool(Description = "Manage scenes. Actions: list, active, open, save, reload.")]
+    [UditTool(Description = "Manage scenes. Actions: list, active, open, save, reload, tree.")]
     public static class ManageScene
     {
         public class Parameters
         {
-            [ToolParameter("Action to perform: list, active, open, save, reload", Required = true)]
+            [ToolParameter("Action to perform: list, active, open, save, reload, tree", Required = true)]
             public string Action { get; set; }
 
             [ToolParameter("Scene asset path relative to project root (required for open)")]
@@ -19,6 +21,12 @@ namespace UditConnector.Tools
 
             [ToolParameter("Discard unsaved changes when opening or reloading")]
             public bool Force { get; set; }
+
+            [ToolParameter("Max hierarchy depth for tree (0 = roots only, -1 or omitted = unlimited)")]
+            public int Depth { get; set; }
+
+            [ToolParameter("Include inactive GameObjects in tree (default true)")]
+            public bool IncludeInactive { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -39,9 +47,10 @@ namespace UditConnector.Tools
                 case "open":   return Open(p);
                 case "save":   return Save();
                 case "reload": return Reload(p);
+                case "tree":   return Tree(p);
                 default:
                     return new ErrorResponse(ErrorCodes.InvalidParams,
-                        $"Unknown action '{action}'. Available: list, active, open, save, reload.");
+                        $"Unknown action '{action}'. Available: list, active, open, save, reload, tree.");
             }
         }
 
@@ -190,6 +199,79 @@ namespace UditConnector.Tools
                 root_count = s.IsValid() ? s.rootCount : 0,
                 build_index = s.buildIndex,
                 is_untitled = !hasPath,
+            };
+        }
+
+        static object Tree(ToolParams p)
+        {
+            var scene = EditorSceneManager.GetActiveScene();
+            if (!scene.IsValid() || !scene.isLoaded)
+                return new ErrorResponse("No active scene is loaded.");
+
+            // depth < 0 means unlimited. 0 means roots only (no children).
+            // Omitted param lands here as null → default to unlimited.
+            var depth = p.GetInt("depth", -1) ?? -1;
+            var includeInactive = p.GetBool("include_inactive", true);
+
+            var roots = scene.GetRootGameObjects();
+            var nodes = new List<object>(roots.Length);
+            var count = 0;
+            foreach (var go in roots)
+            {
+                var node = BuildTreeNode(go, depth, includeInactive, ref count);
+                if (node != null) nodes.Add(node);
+            }
+
+            return new SuccessResponse(
+                $"Scene tree: {count} GameObject(s).",
+                new
+                {
+                    scene = string.IsNullOrEmpty(scene.path) ? null : scene.path,
+                    depth,
+                    include_inactive = includeInactive,
+                    count,
+                    roots = nodes,
+                });
+        }
+
+        static object BuildTreeNode(GameObject go, int depthRemaining, bool includeInactive, ref int count)
+        {
+            if (go == null) return null;
+            // Skip inactive subtrees entirely when the caller asked. activeInHierarchy
+            // already folds in parent state, so filtering at each node naturally
+            // hides the whole descendant tree of an inactive root.
+            if (!includeInactive && !go.activeInHierarchy) return null;
+
+            count++;
+
+            var components = go.GetComponents<Component>();
+            var componentNames = new List<string>(components.Length);
+            foreach (var c in components)
+            {
+                // A null Component slot indicates a missing script reference — surface
+                // it explicitly so agents can detect and repair stale prefabs.
+                componentNames.Add(c == null ? "<Missing Script>" : c.GetType().Name);
+            }
+
+            var children = new List<object>();
+            if (depthRemaining != 0)
+            {
+                var t = go.transform;
+                var nextDepth = depthRemaining < 0 ? -1 : depthRemaining - 1;
+                for (int i = 0; i < t.childCount; i++)
+                {
+                    var childNode = BuildTreeNode(t.GetChild(i).gameObject, nextDepth, includeInactive, ref count);
+                    if (childNode != null) children.Add(childNode);
+                }
+            }
+
+            return new
+            {
+                id = StableIdRegistry.ToStableId(go),
+                name = go.name,
+                active = go.activeInHierarchy,
+                components = componentNames,
+                children,
             };
         }
     }
