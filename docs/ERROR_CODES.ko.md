@@ -18,7 +18,8 @@
 | `UCI-030` | ExecCompileError | Connector | ❌ C# 코드 수정 | `udit exec` 문법/의미 에러 |
 | `UCI-031` | ExecRuntimeError | Connector | ❌ C# 로직 수정 | `udit exec` 런타임에서 throw |
 | `UCI-040` | AssetNotFound | Connector | ❌ 경로/GUID 수정 | Phase 2 (Observe) 예약 |
-| `UCI-041` | SceneNotFound | Connector | ❌ 경로 수정 | Phase 2 (Observe) 예약 |
+| `UCI-041` | SceneNotFound | Connector | ❌ 경로 수정 | `scene open`에 존재하지 않는 경로 |
+| `UCI-042` | GameObjectNotFound | Connector | ❌ 재스캔 후 ID 수정 | `go inspect` / `go path` 에 오래되거나 알 수 없는 stable ID |
 | `UCI-999` | Unknown | 양쪽 | 🟡 메시지 검사 | 미분류 — 로그 + 업스트림 보고 |
 
 ## 상세
@@ -99,10 +100,27 @@
 
 ### `UCI-040` / `UCI-041` — Asset/Scene Not Found
 
-**출처**: Connector (Phase 2 `AssetTools` / `SceneTools` — 예약)
-**발생 시점**: v0.3.0에서 `asset find/inspect` 와 `scene open` 명령이 출시되면 emit 예정.
+**출처**: Connector (`ManageScene`이 041을 emit; 040은 `AssetTools` 용으로 예약)
+**발생 시점**: `udit scene open <path>` 에 씬 에셋이 아닌 경로를 넘겼을 때. `UCI-040`은 `asset find/inspect` 가 들어오면 사용.
 
-**에이전트 행동**: 경로/GUID 검증, `asset find` 로 올바른 식별자 발견.
+**에이전트 행동**: 경로 검증. `udit scene list` 가 모든 씬의 path + GUID를 돌려주므로 이걸로 올바른 식별자 탐색.
+
+### `UCI-042` — GameObjectNotFound
+
+**출처**: Connector (`ManageGameObject`)
+**발생 시점**: `udit go inspect go:XXXX` 또는 `udit go path go:XXXX` 가 현재 세션의 `StableIdRegistry`에 없는 stable ID를 받았을 때 — 이전 세션의 ID라 (레지스트리는 인메모리, 도메인 리로드 시 초기화), 또는 해당 GameObject가 파괴되었기 때문.
+
+**에이전트 행동**: 먼저 `udit go find` 또는 `udit scene tree`로 레지스트리를 다시 채운다. 스캔 후에도 resolve 안 되면 GO가 사라진 것 — 동일 엔티티에 대해 새로 `go find` 를 호출. 같은 ID로 무작정 재시도하지 말 것.
+
+**예시**:
+```json
+{
+  "success": false,
+  "command": "go",
+  "error_code": "UCI-042",
+  "message": "GameObject not found: go:deadbeef. Run `go find` first if the ID is from a previous session."
+}
+```
 
 ### `UCI-999` — Unknown
 
@@ -122,11 +140,12 @@
             ▼                    ▼                    ▼
        UCI-001/010/030      UCI-002/020/021         UCI-003
        UCI-011/031/040      ────────────────       ───────
-       UCI-041
+       UCI-041/042
        ───────────────
        중단. 사용자에게      1-3초 sleep,          더 큰
        보고. 루프 금지.      한 번 재시도.          --timeout
-                            루프 max 3회.          으로 재시도
+       UCI-042: go find로   루프 max 3회.          으로 재시도
+       재스캔 후에만 재시도.
 ```
 
 ## 새 코드 추가

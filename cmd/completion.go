@@ -58,7 +58,7 @@ _udit_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands="completion console editor exec help list menu profiler reserialize scene screenshot status test update version"
+    local commands="completion console editor exec go help list menu profiler reserialize scene screenshot status test update version"
     local globals="--port --project --timeout --json --help"
 
     case "$prev" in
@@ -69,6 +69,9 @@ _udit_complete() {
             return ;;
         scene)
             COMPREPLY=( $(compgen -W "list active open save reload tree" -- "$cur") )
+            return ;;
+        go)
+            COMPREPLY=( $(compgen -W "find inspect path" -- "$cur") )
             return ;;
         profiler)
             COMPREPLY=( $(compgen -W "hierarchy enable disable status clear" -- "$cur") )
@@ -108,6 +111,10 @@ _udit() {
             subs=('list:List scenes' 'active:Describe active scene' 'open:Open scene' 'save:Save open scenes' 'reload:Reload active scene' 'tree:Dump hierarchy tree')
             _describe 'scene action' subs
             return ;;
+        go)
+            subs=('find:Search GameObjects' 'inspect:Dump components + values' 'path:Hierarchy path string')
+            _describe 'go action' subs
+            return ;;
         profiler)
             subs=('hierarchy:Sample hierarchy' 'enable:Start recording' 'disable:Stop recording' 'status:Show state' 'clear:Clear frames')
             _describe 'profiler action' subs
@@ -121,6 +128,7 @@ _udit() {
     commands=(
         'editor:Play/stop/pause/refresh editor'
         'scene:List/open/save/reload scenes'
+        'go:Query GameObjects (find/inspect/path)'
         'console:Read console logs'
         'exec:Execute C# code'
         'list:List all registered tools'
@@ -163,7 +171,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @(
-        'editor', 'scene', 'console', 'exec', 'list', 'status', 'test',
+        'editor', 'scene', 'go', 'console', 'exec', 'list', 'status', 'test',
         'profiler', 'screenshot', 'reserialize', 'menu',
         'update', 'help', 'version', 'completion'
     )
@@ -175,6 +183,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     $candidates = switch ($previous) {
         'editor'     { @('play', 'stop', 'pause', 'refresh') }
         'scene'      { @('list', 'active', 'open', 'save', 'reload', 'tree') }
+        'go'         { @('find', 'inspect', 'path') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
         'completion' { @('bash', 'zsh', 'powershell', 'fish') }
         '--port'     { @() }
@@ -205,6 +214,7 @@ const fishScript = `# >>> udit completion >>>
 
 complete -c udit -n "__fish_use_subcommand" -a "editor"      -d "Play/stop/pause/refresh editor"
 complete -c udit -n "__fish_use_subcommand" -a "scene"       -d "List/open/save/reload scenes"
+complete -c udit -n "__fish_use_subcommand" -a "go"          -d "Query GameObjects (find/inspect/path)"
 complete -c udit -n "__fish_use_subcommand" -a "console"     -d "Read console logs"
 complete -c udit -n "__fish_use_subcommand" -a "exec"        -d "Execute C# code"
 complete -c udit -n "__fish_use_subcommand" -a "list"        -d "List registered tools"
@@ -220,6 +230,7 @@ complete -c udit -n "__fish_use_subcommand" -a "completion"  -d "Generate shell 
 
 complete -c udit -n "__fish_seen_subcommand_from editor"     -a "play stop pause refresh"
 complete -c udit -n "__fish_seen_subcommand_from scene"      -a "list active open save reload tree"
+complete -c udit -n "__fish_seen_subcommand_from go"         -a "find inspect path"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"
 complete -c udit -n "__fish_seen_subcommand_from completion" -a "bash zsh powershell fish"
 

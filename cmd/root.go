@@ -113,6 +113,8 @@ func Execute() error {
 		resp, err = editorCmd(subArgs, send, inst.Port)
 	case "scene":
 		resp, err = sceneCmd(subArgs, send)
+	case "go":
+		resp, err = goCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -377,6 +379,12 @@ Scene:
   scene tree [--depth N]        Dump active scene hierarchy as a JSON tree with go: IDs
   scene tree --active-only      Skip inactive GameObjects
 
+GameObjects:
+  go find [--name PAT] [--tag T] [--component C]   Query GameObjects; returns go: IDs
+  go find --limit 50 --offset 0                    Paginate (default limit 100)
+  go inspect go:XXXXXXXX                           Dump components + serialized values
+  go path go:XXXXXXXX                              Hierarchy path string (Root/Child/...)
+
 Console:
   console                       Read error & warning logs (default)
   console --lines 20            Limit to N entries
@@ -526,6 +534,45 @@ Notes:
   - Open / reload are blocked while Unity is in play mode.
   - Build index comes from Build Settings; -1 means the scene is not enabled.
   - tree response size grows with hierarchy — use --depth on large scenes.
+`)
+	case "go", "gameobject":
+		fmt.Print(`Usage: udit go <find|inspect|path> [options]
+
+Query GameObjects in the loaded scenes. All results are keyed by
+go:XXXXXXXX stable IDs — the same format emitted by ` + "`udit scene tree`" + `,
+and stable across Editor restarts.
+
+Subcommands:
+  find                        Search loaded scenes for GameObjects matching
+                              every provided filter (AND). Returns compact
+                              entries: { id, name, active, tag, layer, path }.
+    --name <glob>             Name filter. '*' is a wildcard (case-insensitive).
+    --tag <tag>               Exact tag match.
+    --component <type>        Must have a component whose type name matches
+                              (case-insensitive, exact).
+    --active-only             Skip inactive GameObjects. Default: include.
+    --limit <N>               Max results per page. Default: 100, max: 1000.
+    --offset <N>              Skip first N matches. Default: 0.
+  inspect <go:XXXXXXXX>       Full dump of one GameObject: scene, path,
+                              parent_id, children_ids, and every component
+                              with its serialized properties.
+  path <go:XXXXXXXX>          Hierarchy path string ("Root/Child/Leaf").
+
+Examples:
+  udit go find
+  udit go find --name "Enemy*" --tag Enemy
+  udit go find --component Rigidbody --active-only --limit 20
+  udit go inspect go:9598abb1
+  udit go path go:9598abb1
+
+Notes:
+  - Find results are sorted by hierarchy path so paginated queries are
+    deterministic across calls.
+  - Unknown / stale IDs return UCI-042 GameObjectNotFound (see
+    docs/ERROR_CODES.md). Run ` + "`go find`" + ` or ` + "`scene tree`" + ` first to
+    seed the stable-ID registry when an ID is from a previous session.
+  - inspect truncates arrays at 20 elements; use ` + "`component get`" + ` (coming
+    in a later slice) for full array contents.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

@@ -207,7 +207,7 @@ udit scene tree --active-only --json
 
 **Dirty 가드.** 활성 씬에 저장되지 않은 변경사항이 있을 때 `scene open`과 `scene reload`는 실행을 거부한다. 버리려면 `--force`를 붙이고, 보존하려면 먼저 `scene save`를 호출한다. 두 명령 모두 플레이 모드 중에는 차단된다.
 
-**Stable ID.** `scene tree`의 모든 GameObject는 Unity `GlobalObjectId`를 해시한 `go:XXXXXXXX` id를 가진다. Editor를 재시작해도 동일 GO는 동일 id를 얻는 결정적 포맷이므로, 에이전트가 이전 세션의 결과를 저장했다가 나중에 재조회할 수 있다 (후속 slice에서 `go inspect`가 들어오면 완성). 예시 `roots` 항목:
+**Stable ID.** `scene tree`의 모든 GameObject는 Unity `GlobalObjectId`를 해시한 `go:XXXXXXXX` id를 가진다. Editor를 재시작해도 동일 GO는 동일 id를 얻는 결정적 포맷이므로, 에이전트가 이전 세션의 결과를 저장했다가 아래 `go` 명령으로 재조회할 수 있다. 예시 `roots` 항목:
 
 ```json
 {
@@ -218,6 +218,32 @@ udit scene tree --active-only --json
   "children": []
 }
 ```
+
+### GameObject 쿼리
+
+로드된 씬의 GameObject를 조회한다. 모든 결과는 `scene tree`와 동일한 `go:XXXXXXXX` id 포맷으로 키잉되어 있고, 에디터 재시작 전(또는 GO 파괴 전)까지 라이브 GameObject로 resolve된다.
+
+```bash
+# 로드된 씬의 모든 GameObject (페이지네이션됨)
+udit go find
+
+# 이름/태그/컴포넌트 타입 조합 필터 (AND)
+udit go find --name "Enemy*" --tag Enemy --component Rigidbody
+
+# 큰 씬 페이지네이션 — 페이지당 20개
+udit go find --limit 20 --offset 0
+
+# 한 GameObject의 전체 덤프: scene, path, parent_id, children_ids,
+# 그리고 모든 컴포넌트의 serialized 프로퍼티
+udit go inspect go:9598abb1
+
+# 계층 경로 문자열만 ("Root/Child/Leaf")
+udit go path go:9598abb1
+```
+
+`go inspect`는 컴포넌트별 타입화된 값을 반환: Transform은 world/local 좌표 모두 특별 처리, enum은 `{value, name}`, ObjectReference는 `{type, name, path, guid}`, 20개 초과 배열은 `{count, elements, truncated: true}`로 클립. 누락된 스크립트는 `"<Missing Script>"`로 표시되어 오래된 prefab 탐지 가능.
+
+알 수 없거나 만료된 id는 `UCI-042 GameObjectNotFound`를 반환 — `go find` 또는 `scene tree`로 stable-ID 레지스트리를 재시딩한 뒤 새 id로 재시도한다.
 
 ### 콘솔 로그
 

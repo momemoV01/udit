@@ -18,7 +18,8 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 | `UCI-030` | ExecCompileError | Connector | ❌ Fix C# code | `udit exec` syntax/semantic error |
 | `UCI-031` | ExecRuntimeError | Connector | ❌ Fix C# logic | `udit exec` threw at runtime |
 | `UCI-040` | AssetNotFound | Connector | ❌ Fix path/GUID | Reserved for Phase 2 (Observe) |
-| `UCI-041` | SceneNotFound | Connector | ❌ Fix path | Reserved for Phase 2 (Observe) |
+| `UCI-041` | SceneNotFound | Connector | ❌ Fix path | `scene open` with non-existent path |
+| `UCI-042` | GameObjectNotFound | Connector | ❌ Re-scan, then fix ID | `go inspect` / `go path` with stale or unknown stable ID |
 | `UCI-999` | Unknown | Either | 🟡 Inspect message | Unclassified — log & report upstream |
 
 ## Detail
@@ -99,10 +100,27 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 
 ### `UCI-040` / `UCI-041` — Asset/Scene Not Found
 
-**Origin**: Connector (Phase 2 `AssetTools` / `SceneTools` — reserved)
-**Triggers when**: Will be emitted by `asset find/inspect` and `scene open` once those commands ship in v0.3.0.
+**Origin**: Connector (`ManageScene` emits 041; 040 reserved for `AssetTools`)
+**Triggers when**: `udit scene open <path>` with a path that does not map to a scene asset. `UCI-040` is reserved for `asset find/inspect` once those commands ship.
 
-**Agent action**: Verify path/GUID, run `asset find` to discover correct identifier.
+**Agent action**: Verify the path. `udit scene list` returns every scene's path and GUID — use it to discover the correct identifier.
+
+### `UCI-042` — GameObjectNotFound
+
+**Origin**: Connector (`ManageGameObject`)
+**Triggers when**: `udit go inspect go:XXXX` or `udit go path go:XXXX` is called with a stable ID that the current session's `StableIdRegistry` does not know — either because the ID is from a previous session (the registry is in-memory and resets on domain reload), or because the GameObject was destroyed.
+
+**Agent action**: Run `udit go find` or `udit scene tree` first to re-seed the registry. If the ID still does not resolve after a scan, the GameObject is gone — the agent should fall back to a fresh `go find` for the same entity. Do not retry the same ID blindly.
+
+**Example**:
+```json
+{
+  "success": false,
+  "command": "go",
+  "error_code": "UCI-042",
+  "message": "GameObject not found: go:deadbeef. Run `go find` first if the ID is from a previous session."
+}
+```
 
 ### `UCI-999` — Unknown
 
@@ -122,11 +140,12 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
             ▼                    ▼                    ▼
        UCI-001/010/030      UCI-002/020/021         UCI-003
        UCI-011/031/040      ────────────────       ───────
-       UCI-041                                       
+       UCI-041/042                                    
        ───────────────                                
        Stop. Report to       Sleep 1-3s,           Retry once
        user. Don't loop.     retry once.           with longer
-                             Loop max 3x.          --timeout.
+       UCI-042: re-scan     Loop max 3x.          --timeout.
+       first via go find.                          
 ```
 
 ## Adding New Codes

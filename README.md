@@ -206,7 +206,7 @@ udit scene tree --active-only --json
 
 **Dirty-scene guard.** `scene open` and `scene reload` refuse to run when the current scene has unsaved changes. Pass `--force` to discard, or call `scene save` first. Both commands are also blocked while Unity is in play mode.
 
-**Stable IDs.** Every GameObject in `scene tree` gets a `go:XXXXXXXX` id that is a hash of Unity's `GlobalObjectId`. The id is deterministic across Editor restarts, so an agent can save results from a prior session and resolve them later (once `go inspect` ships in a follow-up slice). Example `roots` entry:
+**Stable IDs.** Every GameObject in `scene tree` gets a `go:XXXXXXXX` id that is a hash of Unity's `GlobalObjectId`. The id is deterministic across Editor restarts, so an agent can save results from a prior session and resolve them later via the `go` commands below. Example `roots` entry:
 
 ```json
 {
@@ -217,6 +217,32 @@ udit scene tree --active-only --json
   "children": []
 }
 ```
+
+### GameObjects
+
+Query GameObjects across the loaded scenes. Every result is keyed by the same `go:XXXXXXXX` id format as `scene tree`, and resolves back to a live GameObject until the Editor restarts (or the GO is destroyed).
+
+```bash
+# Find every GameObject in the loaded scenes (paginated)
+udit go find
+
+# Filter by name wildcard, tag, and component type (AND)
+udit go find --name "Enemy*" --tag Enemy --component Rigidbody
+
+# Paginate for large scenes — first page, 20 per page
+udit go find --limit 20 --offset 0
+
+# Full dump of one GameObject: scene, path, parent_id, children_ids,
+# and every component's serialized properties
+udit go inspect go:9598abb1
+
+# Just the hierarchy path string ("Root/Child/Leaf")
+udit go path go:9598abb1
+```
+
+`go inspect` returns every component with typed values: Transform special-cases world+local coordinates, enums render as `{value, name}`, ObjectReferences render as `{type, name, path, guid}`, arrays over 20 elements are clipped to `{count, elements, truncated: true}`. Missing-script slots show `"<Missing Script>"` so stale prefabs are detectable.
+
+Unknown or stale ids return `UCI-042 GameObjectNotFound` — run `go find` or `scene tree` to re-seed the stable-ID registry, then retry with the fresh id.
 
 ### Console Logs
 
