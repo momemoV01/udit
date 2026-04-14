@@ -4,21 +4,37 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-14
+
+Patch release — no API changes, but two foot-guns removed. Safe drop-in
+upgrade from v0.2.0.
+
+### Fixed
+- **Shell completion scripts now safe to re-install.** Running
+  `udit completion powershell >> $PROFILE` (or the bash/zsh equivalent)
+  a second time used to duplicate the entire Register-ArgumentCompleter
+  block, corrupting the shell init file and breaking every new session
+  until the duplicate was manually removed. Completion scripts are now
+  wrapped in sentinel comments (`# >>> udit completion >>>` ...
+  `# <<< udit completion <<<`) and README.md documents the
+  sed/PowerShell one-liner that removes the old block before appending
+  a fresh one. Discovered on Windows PowerShell during v0.2.0 testing.
+
 ### Changed
-- **CI: drop ALL Node 20 actions in Release workflow** so the next tag push
-  (v0.3.0+) keeps building after GitHub removes Node 20 from runners on
-  2026-09-16. Verified each action's `using:` field instead of trusting the
-  deprecation warning text (which only mentioned three of the five actions).
-  Final `release.yml` versions, all confirmed `using: node24`:
+- **CI: drop ALL Node 20 actions in Release workflow** so tag pushes keep
+  building after GitHub removes Node 20 from runners on 2026-09-16.
+  Verified each action's `using:` field instead of trusting the
+  deprecation warning text (which only mentioned three of the five
+  actions). Final `release.yml` versions, all confirmed `using: node24`:
   - `actions/checkout` v4 → v5
   - `actions/setup-go` v5 → v6
   - `actions/upload-artifact` v4 → v6 (v5 was still node20)
   - `actions/download-artifact` v4 → v7 (v5 and v6 were both node20)
-  - `softprops/action-gh-release` v2 → v3 (v2 was node20; v3 release notes
-    confirm "runtime move only — no input/output changes")
+  - `softprops/action-gh-release` v2 → v3 (v2 was node20; v3 release
+    notes confirm "runtime move only — no input/output changes")
   `ci.yml` was already on v5/v6 plus `golangci-lint-action@v9` (node24);
-  no change there. v0.2.0 release artifacts (built with the old versions)
-  remain valid.
+  no change there. This release is the first real-runner verification
+  that the bumped Release workflow actually builds all five platforms.
 
 ## [0.2.0] - 2026-04-14
 
