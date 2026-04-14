@@ -245,6 +245,44 @@ udit go path go:9598abb1
 
 알 수 없거나 만료된 id는 `UCI-042 GameObjectNotFound`를 반환 — `go find` 또는 `scene tree`로 stable-ID 레지스트리를 재시딩한 뒤 새 id로 재시도한다.
 
+#### GameObject 변경 (v0.4.0+)
+
+`go` 네임스페이스는 다섯 가지 기본 씬 편집 연산도 노출한다. 각 연산은 **Unity Undo를 통해 실행**되므로, Editor에서 Ctrl+Z로 사람이 인스펙터에서 편집한 것과 동일하게 되돌릴 수 있다. 활성 씬은 dirty로 마크되어 닫을 때 표준 저장 프롬프트가 뜬다.
+
+```bash
+# GameObject 생성. 새 go: ID 반환; --pos 는 local position float.
+udit go create --name Boss
+udit go create --name Minion --parent go:abcd1234 --pos 0,5,0
+
+# GameObject + 모든 자손 파괴. children_affected 가 cascade 크기 보고.
+udit go destroy go:5678abcd
+
+# 부모 변경. --parent 생략 시 씬 루트로.
+# 사이클 (자기 자신 또는 자손 아래로 이동) 은 사전에 거부됨.
+udit go move go:5678abcd --parent go:abcd1234
+udit go move go:5678abcd
+
+# 이름 변경.
+udit go rename go:5678abcd "Renamed_Boss"
+
+# activeSelf 토글. 이미 그 상태면 no_change=true 로 success 반환.
+udit go setactive go:5678abcd --active false
+```
+
+**모든 mutation은 `--dry-run` 지원.** 다섯 서브커맨드 중 어느 것에든 `--dry-run`을 붙이면 씬을 건드리지 않고 변경 영향을 미리 보여준다. 응답에는 실제 실행 시와 같은 필드(`would_destroy`, `children_affected`, `from`/`to` 등)가 포함되어 에이전트가 commit 전에 영향 범위로 분기할 수 있다.
+
+```bash
+udit go destroy go:5678abcd --dry-run
+# {
+#   "would_destroy": "Root/Boss",
+#   "children_affected": 12,
+#   "components": ["Transform", "Rigidbody", "PlayerController"],
+#   "dry_run": true
+# }
+```
+
+플레이 모드 중에는 mutation 차단. 각 mutation은 자기만의 Undo 그룹(Editor의 Edit → Undo 메뉴에 표시되는 설명적인 이름) 을 가지므로, `Undo.PerformUndo`가 에이전트 세션 전체를 한 번에 collapse 하지 않고 한 번에 한 논리 연산만 되돌린다.
+
 ### 컴포넌트 쿼리
 
 GameObject 전체를 다시 덤프하지 않고 특정 컴포넌트(또는 필드)만 zoom-in. 필드 이름은 `go inspect`가 내보내는 것과 동일 — 전체 체인에서 동일 어휘 사용.

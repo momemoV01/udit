@@ -71,7 +71,7 @@ _udit_complete() {
             COMPREPLY=( $(compgen -W "list active open save reload tree" -- "$cur") )
             return ;;
         go)
-            COMPREPLY=( $(compgen -W "find inspect path" -- "$cur") )
+            COMPREPLY=( $(compgen -W "find inspect path create destroy move rename setactive" -- "$cur") )
             return ;;
         component)
             COMPREPLY=( $(compgen -W "list get schema" -- "$cur") )
@@ -118,7 +118,11 @@ _udit() {
             _describe 'scene action' subs
             return ;;
         go)
-            subs=('find:Search GameObjects' 'inspect:Dump components + values' 'path:Hierarchy path string')
+            subs=(
+                'find:Search GameObjects' 'inspect:Dump components + values' 'path:Hierarchy path string'
+                'create:Spawn a GameObject' 'destroy:Destroy a GameObject' 'move:Reparent'
+                'rename:Rename in place' 'setactive:Toggle active state'
+            )
             _describe 'go action' subs
             return ;;
         component)
@@ -199,7 +203,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     $candidates = switch ($previous) {
         'editor'     { @('play', 'stop', 'pause', 'refresh') }
         'scene'      { @('list', 'active', 'open', 'save', 'reload', 'tree') }
-        'go'         { @('find', 'inspect', 'path') }
+        'go'         { @('find', 'inspect', 'path', 'create', 'destroy', 'move', 'rename', 'setactive') }
         'component'  { @('list', 'get', 'schema') }
         'asset'      { @('find', 'inspect', 'dependencies', 'references', 'guid', 'path') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
@@ -250,7 +254,7 @@ complete -c udit -n "__fish_use_subcommand" -a "completion"  -d "Generate shell 
 
 complete -c udit -n "__fish_seen_subcommand_from editor"     -a "play stop pause refresh"
 complete -c udit -n "__fish_seen_subcommand_from scene"      -a "list active open save reload tree"
-complete -c udit -n "__fish_seen_subcommand_from go"         -a "find inspect path"
+complete -c udit -n "__fish_seen_subcommand_from go"         -a "find inspect path create destroy move rename setactive"
 complete -c udit -n "__fish_seen_subcommand_from component"  -a "list get schema"
 complete -c udit -n "__fish_seen_subcommand_from asset"      -a "find inspect dependencies references guid path"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"

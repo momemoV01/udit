@@ -15,7 +15,7 @@ import (
 // regardless of client.
 func goCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 	if len(args) == 0 {
-		return nil, fmt.Errorf("usage: udit go <find|inspect|path>")
+		return nil, fmt.Errorf("usage: udit go <find|inspect|path|create|destroy|move|rename|setactive>")
 	}
 
 	action := args[0]
@@ -73,9 +73,127 @@ func goCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 			"id":     id,
 		})
 
+	case "create":
+		// `udit go create --name X [--parent go:Y] [--pos x,y,z] [--dry-run]`
+		params := map[string]interface{}{"action": "create"}
+		if v, ok := flags["name"]; ok {
+			params["name"] = v
+		} else {
+			return nil, fmt.Errorf("usage: udit go create --name <name> [--parent go:XXX] [--pos x,y,z] [--dry-run]")
+		}
+		if v, ok := flags["parent"]; ok {
+			params["parent"] = v
+		}
+		if v, ok := flags["pos"]; ok {
+			params["pos"] = v
+		}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_game_object", params)
+
+	case "destroy":
+		id := firstStableId(rest)
+		if id == "" {
+			return nil, fmt.Errorf("usage: udit go destroy go:XXXXXXXX [--dry-run]")
+		}
+		params := map[string]interface{}{"action": "destroy", "id": id}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_game_object", params)
+
+	case "move":
+		id := firstStableId(rest)
+		if id == "" {
+			return nil, fmt.Errorf("usage: udit go move go:XXXXXXXX [--parent go:YYY] [--dry-run]")
+		}
+		params := map[string]interface{}{"action": "move", "id": id}
+		if v, ok := flags["parent"]; ok {
+			params["parent"] = v
+		}
+		// Omitting --parent is intentional: the C# side treats absent parent
+		// as "move to scene root", which is the most common use of this flag
+		// in the destroy/cleanup workflows we want to support.
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_game_object", params)
+
+	case "rename":
+		// `udit go rename go:XXX <newname> [--dry-run]`
+		id := firstStableId(rest)
+		if id == "" {
+			return nil, fmt.Errorf("usage: udit go rename go:XXXXXXXX <newname> [--dry-run]")
+		}
+		newName := firstNonStableIdPositional(rest, id)
+		if newName == "" {
+			return nil, fmt.Errorf("rename: missing <newname> (after the go: id)")
+		}
+		params := map[string]interface{}{
+			"action":   "rename",
+			"id":       id,
+			"new_name": newName,
+		}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_game_object", params)
+
+	case "setactive":
+		// `udit go setactive go:XXX --active true|false [--dry-run]`
+		id := firstStableId(rest)
+		if id == "" {
+			return nil, fmt.Errorf("usage: udit go setactive go:XXXXXXXX --active true|false [--dry-run]")
+		}
+		v, ok := flags["active"]
+		if !ok {
+			return nil, fmt.Errorf("setactive: --active true|false is required")
+		}
+		// Accept the common spellings; reject everything else with a clear
+		// message instead of silently coercing to false.
+		var b bool
+		switch strings.ToLower(v) {
+		case "true", "1", "yes", "on":
+			b = true
+		case "false", "0", "no", "off":
+			b = false
+		default:
+			return nil, fmt.Errorf("setactive: --active must be true or false, got %q", v)
+		}
+		params := map[string]interface{}{
+			"action": "setactive",
+			"id":     id,
+			"active": b,
+		}
+		if _, dry := flags["dry-run"]; dry {
+			params["dry_run"] = true
+		}
+		return send("manage_game_object", params)
+
 	default:
-		return nil, fmt.Errorf("unknown go action: %s\nAvailable: find, inspect, path", action)
+		return nil, fmt.Errorf("unknown go action: %s\nAvailable: find, inspect, path, create, destroy, move, rename, setactive", action)
 	}
+}
+
+// firstNonStableIdPositional returns the first positional that is not the
+// supplied stable ID and not a flag name/value. Used by rename which expects
+// `go rename <id> <newname>`.
+func firstNonStableIdPositional(args []string, id string) string {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "--") {
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+				i++
+			}
+			continue
+		}
+		if a == id {
+			continue
+		}
+		return a
+	}
+	return ""
 }
 
 // firstStableId returns the first positional argument that looks like a

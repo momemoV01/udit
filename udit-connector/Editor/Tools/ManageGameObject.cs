@@ -4,11 +4,12 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using UditConnector.Tools.Common;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace UditConnector.Tools
 {
-    [UditTool(Description = "Query GameObjects. Actions: find, inspect, path.")]
+    [UditTool(Description = "Query and mutate GameObjects. Actions: find, inspect, path, create, destroy, move, rename, setactive.")]
     public static class ManageGameObject
     {
         const int DefaultLimit = 100;
@@ -16,10 +17,10 @@ namespace UditConnector.Tools
 
         public class Parameters
         {
-            [ToolParameter("Action to perform: find, inspect, path", Required = true)]
+            [ToolParameter("Action to perform: find, inspect, path, create, destroy, move, rename, setactive", Required = true)]
             public string Action { get; set; }
 
-            [ToolParameter("Stable ID (go:XXXXXXXX) — required for inspect, path")]
+            [ToolParameter("Stable ID (go:XXXXXXXX) — required for inspect, path, destroy, move, rename, setactive")]
             public string Id { get; set; }
 
             [ToolParameter("Name glob pattern for find (e.g. Enemy*). Case-insensitive.")]
@@ -39,6 +40,21 @@ namespace UditConnector.Tools
 
             [ToolParameter("Skip first N matches for find (default 0)")]
             public int Offset { get; set; }
+
+            [ToolParameter("Parent stable ID for create / move (omit for scene root)")]
+            public string Parent { get; set; }
+
+            [ToolParameter("Local position for create as 'x,y,z' (default '0,0,0')")]
+            public string Pos { get; set; }
+
+            [ToolParameter("New name for rename")]
+            public string NewName { get; set; }
+
+            [ToolParameter("Active state for setactive (true/false)")]
+            public bool Active { get; set; }
+
+            [ToolParameter("Dry-run: report what would change without mutating")]
+            public bool DryRun { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -54,12 +70,17 @@ namespace UditConnector.Tools
             var action = actionResult.Value.ToLowerInvariant();
             switch (action)
             {
-                case "find":    return Find(p);
-                case "inspect": return Inspect(p);
-                case "path":    return Path(p);
+                case "find":      return Find(p);
+                case "inspect":   return Inspect(p);
+                case "path":      return Path(p);
+                case "create":    return Create(p);
+                case "destroy":   return Destroy(p);
+                case "move":      return Move(p);
+                case "rename":    return Rename(p);
+                case "setactive": return SetActive(p);
                 default:
                     return new ErrorResponse(ErrorCodes.InvalidParams,
-                        $"Unknown action '{action}'. Available: find, inspect, path.");
+                        $"Unknown action '{action}'. Available: find, inspect, path, create, destroy, move, rename, setactive.");
             }
         }
 
@@ -221,5 +242,360 @@ namespace UditConnector.Tools
         }
 
         static int Clamp(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
+
+        // --- Mutations -----------------------------------------------------
+
+        static object Create(ToolParams p)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return new ErrorResponse("Cannot create GameObjects while in play mode.");
+
+            var name = p.Get("name", "GameObject");
+            if (string.IsNullOrEmpty(name))
+                return new ErrorResponse(ErrorCodes.InvalidParams, "'name' must not be empty for create.");
+
+            // Resolve optional parent first so dry-run reports a meaningful target.
+            GameObject parent = null;
+            var parentId = p.Get("parent");
+            if (!string.IsNullOrEmpty(parentId))
+            {
+                if (!StableIdRegistry.TryResolve(parentId, out parent))
+                    return new ErrorResponse(ErrorCodes.GameObjectNotFound,
+                        $"Parent GameObject not found: {parentId}.");
+            }
+
+            // Parse position. We accept "x,y,z" because that matches the ROADMAP
+            // surface and stays inside the existing string-flag plumbing.
+            // Errors here point at the offending value rather than failing the
+            // whole call with a generic "bad params".
+            var posStr = p.Get("pos");
+            Vector3 pos = Vector3.zero;
+            if (!string.IsNullOrEmpty(posStr))
+            {
+                if (!TryParseVector3(posStr, out pos))
+                    return new ErrorResponse(ErrorCodes.InvalidParams,
+                        $"--pos must be 'x,y,z' floats, got '{posStr}'.");
+            }
+
+            var dryRun = p.GetBool("dry_run");
+            var parentDescription = parent != null
+                ? $"{parent.name} ({StableIdRegistry.ToStableId(parent)})"
+                : "<scene root>";
+
+            if (dryRun)
+            {
+                return new SuccessResponse(
+                    $"[dry-run] Would create '{name}' under {parentDescription}.",
+                    new
+                    {
+                        dry_run = true,
+                        would_create = name,
+                        parent = parent != null ? StableIdRegistry.ToStableId(parent) : null,
+                        local_position = new { x = pos.x, y = pos.y, z = pos.z },
+                    });
+            }
+
+            // IncrementCurrentGroup forces Unity to start a fresh Undo group
+            // for this mutation. Without it, multiple udit commands fired
+            // within the same editor tick collapse into one group and a
+            // single Undo unwinds them all at once (or, worse, cancels a
+            // create+destroy pair into a no-op).
+            Undo.IncrementCurrentGroup();
+            Undo.SetCurrentGroupName($"udit go create '{name}'");
+
+            var go = new GameObject(name);
+            // RegisterCreatedObjectUndo means Ctrl+Z in Unity removes the GO
+            // again. Without this, agent-created GOs would silently persist
+            // through user undo attempts and surprise everyone.
+            Undo.RegisterCreatedObjectUndo(go, $"udit go create '{name}'");
+
+            if (parent != null)
+                Undo.SetTransformParent(go.transform, parent.transform, "udit go create (parent)");
+
+            go.transform.localPosition = pos;
+
+            MarkActiveSceneDirty();
+            var id = StableIdRegistry.ToStableId(go);
+            return new SuccessResponse(
+                $"Created '{name}' as {id}.",
+                new
+                {
+                    id,
+                    name = go.name,
+                    path = ComputePath(go),
+                    parent = parent != null ? StableIdRegistry.ToStableId(parent) : null,
+                    local_position = new { x = go.transform.localPosition.x, y = go.transform.localPosition.y, z = go.transform.localPosition.z },
+                });
+        }
+
+        static object Destroy(ToolParams p)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return new ErrorResponse("Cannot destroy GameObjects while in play mode.");
+
+            var idResult = p.GetRequired("id", "'id' parameter is required for destroy.");
+            if (!idResult.IsSuccess)
+                return new ErrorResponse(ErrorCodes.InvalidParams, idResult.ErrorMessage);
+
+            if (!StableIdRegistry.TryResolve(idResult.Value, out var go))
+                return new ErrorResponse(ErrorCodes.GameObjectNotFound,
+                    $"GameObject not found: {idResult.Value}.");
+
+            var dryRun = p.GetBool("dry_run");
+            var path = ComputePath(go);
+            var childCount = go.transform.childCount;
+            var componentNames = new List<string>();
+            foreach (var c in go.GetComponents<Component>())
+            {
+                if (c == null) continue;
+                componentNames.Add(c.GetType().Name);
+            }
+
+            if (dryRun)
+            {
+                return new SuccessResponse(
+                    $"[dry-run] Would destroy '{go.name}' ({childCount} child(ren) cascade).",
+                    new
+                    {
+                        dry_run = true,
+                        would_destroy = path,
+                        id = idResult.Value,
+                        children_affected = childCount,
+                        components = componentNames,
+                    });
+            }
+
+            Undo.IncrementCurrentGroup();
+            Undo.SetCurrentGroupName($"udit go destroy '{go.name}'");
+            // Undo.DestroyObjectImmediate keeps the GO restorable via Ctrl+Z,
+            // unlike plain Object.DestroyImmediate which is permanent.
+            Undo.DestroyObjectImmediate(go);
+            MarkActiveSceneDirty();
+
+            return new SuccessResponse(
+                $"Destroyed '{path}' ({childCount} child(ren)).",
+                new
+                {
+                    destroyed = path,
+                    id = idResult.Value,
+                    children_affected = childCount,
+                });
+        }
+
+        static object Move(ToolParams p)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return new ErrorResponse("Cannot move GameObjects while in play mode.");
+
+            var idResult = p.GetRequired("id", "'id' parameter is required for move.");
+            if (!idResult.IsSuccess)
+                return new ErrorResponse(ErrorCodes.InvalidParams, idResult.ErrorMessage);
+
+            if (!StableIdRegistry.TryResolve(idResult.Value, out var go))
+                return new ErrorResponse(ErrorCodes.GameObjectNotFound,
+                    $"GameObject not found: {idResult.Value}.");
+
+            GameObject newParent = null;
+            var parentId = p.Get("parent");
+            if (!string.IsNullOrEmpty(parentId))
+            {
+                if (!StableIdRegistry.TryResolve(parentId, out newParent))
+                    return new ErrorResponse(ErrorCodes.GameObjectNotFound,
+                        $"Parent GameObject not found: {parentId}.");
+
+                // Catch the obvious cycle: making a GO its own ancestor would
+                // crash Unity. Walk the candidate's ancestor chain and reject
+                // if `go` shows up.
+                if (newParent == go || IsAncestor(go.transform, newParent.transform))
+                {
+                    return new ErrorResponse(ErrorCodes.InvalidParams,
+                        $"Cannot reparent '{go.name}' under itself or a descendant.");
+                }
+            }
+
+            var dryRun = p.GetBool("dry_run");
+            var oldParent = go.transform.parent;
+            var oldParentId = oldParent != null ? StableIdRegistry.ToStableId(oldParent.gameObject) : null;
+            var newParentId = newParent != null ? StableIdRegistry.ToStableId(newParent) : null;
+
+            if (dryRun)
+            {
+                return new SuccessResponse(
+                    $"[dry-run] Would move '{go.name}' from {oldParentId ?? "<root>"} to {newParentId ?? "<root>"}.",
+                    new
+                    {
+                        dry_run = true,
+                        id = idResult.Value,
+                        from_parent = oldParentId,
+                        to_parent = newParentId,
+                    });
+            }
+
+            Undo.IncrementCurrentGroup();
+            Undo.SetCurrentGroupName($"udit go move '{go.name}'");
+            Undo.SetTransformParent(go.transform, newParent != null ? newParent.transform : null, "udit go move");
+            MarkActiveSceneDirty();
+
+            return new SuccessResponse(
+                $"Moved '{go.name}' to {newParentId ?? "<root>"}.",
+                new
+                {
+                    id = idResult.Value,
+                    name = go.name,
+                    from_parent = oldParentId,
+                    to_parent = newParentId,
+                    path = ComputePath(go),
+                });
+        }
+
+        static object Rename(ToolParams p)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return new ErrorResponse("Cannot rename GameObjects while in play mode.");
+
+            var idResult = p.GetRequired("id", "'id' parameter is required for rename.");
+            if (!idResult.IsSuccess)
+                return new ErrorResponse(ErrorCodes.InvalidParams, idResult.ErrorMessage);
+
+            if (!StableIdRegistry.TryResolve(idResult.Value, out var go))
+                return new ErrorResponse(ErrorCodes.GameObjectNotFound,
+                    $"GameObject not found: {idResult.Value}.");
+
+            var newName = p.Get("new_name");
+            if (string.IsNullOrEmpty(newName))
+                return new ErrorResponse(ErrorCodes.InvalidParams, "'new_name' must not be empty for rename.");
+
+            var dryRun = p.GetBool("dry_run");
+            var oldName = go.name;
+
+            if (dryRun)
+            {
+                return new SuccessResponse(
+                    $"[dry-run] Would rename '{oldName}' -> '{newName}'.",
+                    new
+                    {
+                        dry_run = true,
+                        id = idResult.Value,
+                        from = oldName,
+                        to = newName,
+                    });
+            }
+
+            Undo.IncrementCurrentGroup();
+            Undo.SetCurrentGroupName($"udit go rename '{oldName}' -> '{newName}'");
+            Undo.RecordObject(go, "udit go rename");
+            go.name = newName;
+            MarkActiveSceneDirty();
+
+            return new SuccessResponse(
+                $"Renamed '{oldName}' -> '{newName}'.",
+                new
+                {
+                    id = idResult.Value,
+                    from = oldName,
+                    to = go.name,
+                    path = ComputePath(go),
+                });
+        }
+
+        static object SetActive(ToolParams p)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return new ErrorResponse("Cannot toggle GameObjects while in play mode.");
+
+            var idResult = p.GetRequired("id", "'id' parameter is required for setactive.");
+            if (!idResult.IsSuccess)
+                return new ErrorResponse(ErrorCodes.InvalidParams, idResult.ErrorMessage);
+
+            if (!StableIdRegistry.TryResolve(idResult.Value, out var go))
+                return new ErrorResponse(ErrorCodes.GameObjectNotFound,
+                    $"GameObject not found: {idResult.Value}.");
+
+            // 'active' is a switch flag from the CLI side. We require it to be
+            // present (otherwise `setactive` would silently default to false
+            // and toggle off objects without intent).
+            if (p.GetRaw("active") == null)
+                return new ErrorResponse(ErrorCodes.InvalidParams, "'active' parameter is required for setactive (true|false).");
+
+            var newState = p.GetBool("active");
+            var oldState = go.activeSelf;
+            var dryRun = p.GetBool("dry_run");
+
+            if (oldState == newState)
+            {
+                return new SuccessResponse(
+                    $"'{go.name}' is already active={oldState}; no change.",
+                    new
+                    {
+                        id = idResult.Value,
+                        active_self = oldState,
+                        no_change = true,
+                    });
+            }
+
+            if (dryRun)
+            {
+                return new SuccessResponse(
+                    $"[dry-run] Would set '{go.name}' active={newState} (was {oldState}).",
+                    new
+                    {
+                        dry_run = true,
+                        id = idResult.Value,
+                        from = oldState,
+                        to = newState,
+                    });
+            }
+
+            Undo.IncrementCurrentGroup();
+            Undo.SetCurrentGroupName($"udit go setactive '{go.name}' -> {newState}");
+            Undo.RecordObject(go, "udit go setactive");
+            go.SetActive(newState);
+            MarkActiveSceneDirty();
+
+            return new SuccessResponse(
+                $"Set '{go.name}' active={newState}.",
+                new
+                {
+                    id = idResult.Value,
+                    from = oldState,
+                    to = newState,
+                });
+        }
+
+        // --- Mutation helpers ---------------------------------------------
+
+        static bool IsAncestor(Transform candidateAncestor, Transform of)
+        {
+            // Walk `of`'s parent chain and report whether candidateAncestor
+            // appears anywhere — used to reject cycle-creating reparents.
+            for (var t = of; t != null; t = t.parent)
+            {
+                if (t == candidateAncestor) return true;
+            }
+            return false;
+        }
+
+        static bool TryParseVector3(string s, out Vector3 v)
+        {
+            v = default;
+            if (string.IsNullOrEmpty(s)) return false;
+            var parts = s.Split(',');
+            if (parts.Length != 3) return false;
+            if (!float.TryParse(parts[0].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)) return false;
+            if (!float.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y)) return false;
+            if (!float.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z)) return false;
+            v = new Vector3(x, y, z);
+            return true;
+        }
+
+        static void MarkActiveSceneDirty()
+        {
+            // After every mutation we bump the active scene's dirty flag so the
+            // user sees the unsaved-changes asterisk and gets the standard
+            // save prompt on close. Matches what Inspector edits do.
+            var scene = EditorSceneManager.GetActiveScene();
+            if (scene.IsValid() && scene.isLoaded)
+                EditorSceneManager.MarkSceneDirty(scene);
+        }
     }
 }

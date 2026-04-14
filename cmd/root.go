@@ -388,6 +388,12 @@ GameObjects:
   go find --limit 50 --offset 0                    Paginate (default limit 100)
   go inspect go:XXXXXXXX                           Dump components + serialized values
   go path go:XXXXXXXX                              Hierarchy path string (Root/Child/...)
+  go create --name N [--parent go:P] [--pos x,y,z]  Spawn a GameObject (Undo-safe)
+  go destroy go:XXXXXXXX                           Destroy a GameObject + descendants
+  go move go:XXX [--parent go:YYY]                 Reparent (omit --parent for scene root)
+  go rename go:XXX <newname>                       Rename a GameObject
+  go setactive go:XXX --active true|false          Toggle active state
+  (any mutation accepts --dry-run to preview without changing the scene)
 
 Components:
   component list go:XXXXXXXX                       Enumerate components on a GameObject
@@ -554,13 +560,13 @@ Notes:
   - tree response size grows with hierarchy — use --depth on large scenes.
 `)
 	case "go", "gameobject":
-		fmt.Print(`Usage: udit go <find|inspect|path> [options]
+		fmt.Print(`Usage: udit go <find|inspect|path|create|destroy|move|rename|setactive> [options]
 
-Query GameObjects in the loaded scenes. All results are keyed by
-go:XXXXXXXX stable IDs — the same format emitted by ` + "`udit scene tree`" + `,
+Query and mutate GameObjects in the loaded scenes. All results are keyed
+by go:XXXXXXXX stable IDs — the same format emitted by ` + "`udit scene tree`" + `,
 and stable across Editor restarts.
 
-Subcommands:
+Read subcommands:
   find                        Search loaded scenes for GameObjects matching
                               every provided filter (AND). Returns compact
                               entries: { id, name, active, tag, layer, path }.
@@ -576,21 +582,54 @@ Subcommands:
                               with its serialized properties.
   path <go:XXXXXXXX>          Hierarchy path string ("Root/Child/Leaf").
 
+Mutation subcommands (all support --dry-run, all routed through Unity Undo):
+  create --name <name> [--parent go:XXX] [--pos x,y,z]
+                              Spawn a GameObject. Returns the new go: ID.
+                              Without --parent, attached to scene root.
+                              --pos is local position 'x,y,z' floats.
+  destroy <go:XXXXXXXX>       Destroy a GameObject and every descendant.
+                              Reports children_affected so the caller knows
+                              the cascade size.
+  move <go:XXXXXXXX> [--parent go:YYY]
+                              Reparent. Omit --parent to move to scene root.
+                              Cycles (parent under self/descendant) are
+                              rejected with UCI-011.
+  rename <go:XXXXXXXX> <newname>
+                              Rename a GameObject in place.
+  setactive <go:XXXXXXXX> --active true|false
+                              Toggle activeSelf. Already-in-state calls
+                              return success with no_change=true.
+
+Common flags:
+  --dry-run                   Report what would change (children_affected,
+                              from/to fields, etc.) without mutating the
+                              scene. Mutation routes through this flag
+                              uniformly so agents can preview every change.
+
 Examples:
   udit go find
   udit go find --name "Enemy*" --tag Enemy
-  udit go find --component Rigidbody --active-only --limit 20
   udit go inspect go:9598abb1
-  udit go path go:9598abb1
+  udit go create --name Boss --pos 0,5,0
+  udit go create --name Minion --parent go:abcd1234 --dry-run
+  udit go destroy go:5678abcd
+  udit go move go:5678abcd --parent go:abcd1234
+  udit go move go:5678abcd                    # to scene root
+  udit go rename go:5678abcd "Renamed_Boss"
+  udit go setactive go:5678abcd --active false
 
 Notes:
+  - All mutations register with Unity Undo: Ctrl+Z in the Editor reverses
+    create/destroy/move/rename/setactive. The active scene is marked dirty
+    so the standard save prompt fires on close.
+  - Mutations are blocked while Unity is in play mode.
   - Find results are sorted by hierarchy path so paginated queries are
     deterministic across calls.
   - Unknown / stale IDs return UCI-042 GameObjectNotFound (see
     docs/ERROR_CODES.md). Run ` + "`go find`" + ` or ` + "`scene tree`" + ` first to
     seed the stable-ID registry when an ID is from a previous session.
-  - inspect truncates arrays at 20 elements; use ` + "`component get`" + ` (coming
-    in a later slice) for full array contents.
+  - inspect truncates arrays at 20 elements; use ` + "`component get`" + ` for
+    full array contents.
 `)
 	case "component":
 		fmt.Print(`Usage: udit component <list|get|schema> [options]

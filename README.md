@@ -244,6 +244,44 @@ udit go path go:9598abb1
 
 Unknown or stale ids return `UCI-042 GameObjectNotFound` — run `go find` or `scene tree` to re-seed the stable-ID registry, then retry with the fresh id.
 
+#### GameObject mutation (v0.4.0+)
+
+`go` also exposes the five basic scene-editing operations. Each is **routed through Unity Undo**, so Ctrl+Z in the Editor reverses an agent's changes exactly the way it would reverse a human's Inspector edit. The active scene is marked dirty so the standard save prompt fires on close.
+
+```bash
+# Spawn a GameObject. Returns the new go: ID; --pos is local position floats.
+udit go create --name Boss
+udit go create --name Minion --parent go:abcd1234 --pos 0,5,0
+
+# Destroy a GameObject and every descendant. children_affected reports the cascade.
+udit go destroy go:5678abcd
+
+# Reparent. Omit --parent to move to scene root.
+# Cycles (parent under self/descendant) are rejected up front.
+udit go move go:5678abcd --parent go:abcd1234
+udit go move go:5678abcd
+
+# Rename in place.
+udit go rename go:5678abcd "Renamed_Boss"
+
+# Toggle activeSelf. Already-in-state calls return success with no_change=true.
+udit go setactive go:5678abcd --active false
+```
+
+**`--dry-run` on every mutation.** Pass `--dry-run` to any of the five subcommands to preview the change without touching the scene. The response includes the same fields it would after a real run (`would_destroy`, `children_affected`, `from`/`to` parents, etc.) so an agent can branch on the impact before committing.
+
+```bash
+udit go destroy go:5678abcd --dry-run
+# {
+#   "would_destroy": "Root/Boss",
+#   "children_affected": 12,
+#   "components": ["Transform", "Rigidbody", "PlayerController"],
+#   "dry_run": true
+# }
+```
+
+Mutations are blocked while Unity is in play mode. Each mutation gets its own Unity Undo group with a descriptive name (visible under Edit → Undo in the Editor), so `Undo.PerformUndo` reverses one logical operation at a time rather than collapsing the whole agent session.
+
 ### Components
 
 Zoom in on a single component (or a single field) without re-dumping the whole GameObject. Field names mirror what `go inspect` emits, so the same vocabulary works end-to-end.
