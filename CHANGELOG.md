@@ -4,6 +4,160 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-04-15
+
+Same-day patch closing the Phase 3 middle block. v0.4.0 shipped
+GameObject + Component mutation; this release fills in the three
+remaining commonly-needed mutation paths — ObjectReference writes
+(so agents can actually assign sprites/materials/clips via
+`component set`), prefab operations, and asset-level create/move/
+delete/label. Only transactions are left from Phase 3.
+
+Connector bumped to `0.5.0` — one new C# tool (`ManagePrefab`) plus
+two substantial action blocks added to existing tools
+(`ManageComponent.ApplyParsedValue` gains ObjectReference;
+`ManageAsset` gains Create/Move/Delete/Label).
+
+### Added
+
+**`component set` ObjectReference writes.** Closes the "read works,
+write doesn't" asymmetry from v0.4.0.
+
+```bash
+udit component set go:X SpriteRenderer m_Sprite Assets/Sprites/Player.png
+udit component set go:X Material m_MainTex Assets/Textures/wall.jpg
+udit component set go:X Camera m_TargetTexture null
+```
+
+Sub-asset auto-pick: `.png` imported as Texture2D + Sprite sub-asset
+resolves to the Sprite for `SpriteRenderer.m_Sprite` and Texture2D
+for `RawImage.texture` — same path, different assignment, no
+sub-asset knowledge needed on the caller's side. Type-compatibility
+is checked up front via `SerializedProperty.type`'s `PPtr<$TypeName>`
+form; mismatches return `UCI-011` with the expected type and what
+was actually found at that path. Scene object references
+(`go:XXXXXXXX`) are still read-only in this version and return
+`UCI-011` with a pointer to `exec` for now. `"null"` / `"none"` /
+`""` all clear the reference.
+
+**`prefab` namespace (4 subcommands) — new `ManagePrefab` tool.**
+
+```bash
+udit prefab instantiate Assets/Prefabs/Enemy.prefab --parent go:abcd1234 --pos 5,0,0
+udit prefab unpack go:5678abcd --mode completely
+udit prefab apply go:5678abcd
+udit prefab find-instances Assets/Prefabs/Enemy.prefab
+```
+
+- `instantiate` uses `PrefabUtility.InstantiatePrefab` so the scene
+  instance keeps its prefab link (unlike `Object.Instantiate`, which
+  gives a disconnected copy). `--pos` writes localPosition to match
+  `go create`'s convention.
+- `unpack` with `--mode root` (default) unpacks the outermost prefab
+  root only; `--mode completely` recurses into nested prefabs. When
+  the caller points at a nested GO under an instance, unpack and
+  apply both auto-resolve to the outermost root — matches what
+  Unity's own context menu does.
+- `apply` commits the scene instance's overrides back to the prefab
+  asset via `PrefabUtility.ApplyPrefabInstance(..., AutomatedAction)`.
+- `find-instances` walks every loaded scene and returns outermost
+  roots whose `GetCorrespondingObjectFromSource` matches the given
+  asset. Read-only, no Undo.
+
+Every mutation subcommand supports `--dry-run`. Mutations are
+blocked in play mode and register with Unity Undo (per-op groups, so
+Ctrl+Z in the Editor reverses one logical step at a time).
+
+**Stable-ID shifts on unpack** — unpacking changes a GameObject's
+`GlobalObjectId` because the prefab link is part of identity, which
+in turn changes the id the registry emits. The `unpack` response
+returns the new id; the old id starts returning `UCI-042`. This is
+Unity's identity model, not a udit choice — surfaced explicitly in
+help + README so agents learn it up front.
+
+**`asset` mutation namespace (4 subcommands).** Extends
+`ManageAsset`.
+
+```bash
+udit asset create --type MyGame.GameConfig --path Assets/Config/
+udit asset create --type Folder --path Assets/NewFolder
+udit asset move Assets/Old.prefab Assets/New/Moved.prefab
+udit asset delete Assets/Unused.prefab               # trash (recoverable)
+udit asset delete Assets/Unused.prefab --permanent   # DeleteAsset
+udit asset label add    Assets/Prefabs/Boss.prefab boss_content critical
+udit asset label remove Assets/Prefabs/Boss.prefab critical
+udit asset label list   Assets/Prefabs/Boss.prefab
+udit asset label set    Assets/Prefabs/Boss.prefab final
+udit asset label clear  Assets/Prefabs/Boss.prefab
+```
+
+- `create` handles ScriptableObject-derived types and the sentinel
+  `Folder`. `--path` ending in `/` or resolving to an existing folder
+  auto-appends `<TypeName>.asset`; an explicit filename overrides.
+  Unqualified type names prefer UnityEngine; pass the full namespace
+  for project types that would otherwise collide.
+- `move` runs `ValidateMoveAsset` first so agents get Unity's own
+  diagnostic string (e.g. "Destination path is not within project")
+  instead of a generic "returned false". GUID is preserved —
+  existing references in the project stay valid.
+- `delete` defaults to `MoveAssetToTrash` (OS-trash recoverable).
+  `--permanent` uses `DeleteAsset` AND scans the whole project first
+  to report `referenced_by: N` on dry-run so the caller sees the
+  blast radius before committing.
+- `label` sub-ops `add` / `remove` / `list` / `set` / `clear`. The
+  CLI sends labels as a comma-joined string; the C# side splits them
+  back. `list` is special-cased as read-only.
+
+**Important caveat, documented.** AssetDatabase operations
+(`CreateAsset`, `MoveAsset`, `DeleteAsset`, `SetLabels`) do **not**
+participate in Unity's scene Undo. Ctrl+Z in the Editor will not
+reverse them — this is the underlying Unity API's design, not a
+udit choice. The safety nets are `--dry-run` for preview and
+`delete` defaulting to the OS trash. README and `udit asset --help`
+call this out prominently.
+
+### Changed
+
+- **Connector bumped to `0.5.0`** (`udit-connector/package.json`).
+  New `ManagePrefab` tool, two substantial action blocks added to
+  `ManageComponent` / `ManageAsset`, and two helpers
+  (`ResolveUnityObjectType`, `StripPPtrWrapper`) for the
+  ObjectReference write path.
+- **Shell completion** (bash/zsh/powershell/fish) learns the new
+  `prefab` top-level command with 4 subcommands, plus 4 new `asset`
+  subcommands (`create`, `move`, `delete`, `label`).
+- **Help text** gains dedicated `udit prefab --help` and expanded
+  `udit asset --help`. The `udit component --help` value-parser
+  cheat sheet gets an ObjectReference row.
+- **README.md / README.ko.md** gain "Component mutation →
+  ObjectReference", "Asset mutation", and "Prefabs" subsections,
+  kept in lockstep per the bilingual doc policy.
+- **Error messaging.** `prefab instantiate` now distinguishes
+  "no asset at path" (UCI-040) from "asset exists but isn't a
+  GameObject" (UCI-011 with a hint to run `asset inspect`), instead
+  of collapsing both into a single "prefab not found" message.
+
+### Design notes
+
+- **Same vocabulary on both sides of `component`.** `component set`
+  field names match what `component get` returns, including
+  Transform's virtual fields (`position`, `local_position`, etc.)
+  and the type-specific parser shapes (Vector/Color/Enum/Ref). An
+  agent that can describe a component can also edit it using the
+  same identifiers.
+- **Prefab mutations live in a separate tool.** `ManagePrefab` could
+  have been action arms on `manage_game_object`, but the 4 actions
+  all operate on the asset↔instance relationship rather than on a
+  GameObject's own state. Separating them keeps both tools'
+  surfaces legible and matches how Unity's own menu groups prefab
+  operations.
+- **Asset safety = preview + trash + blast-radius scan.** Since
+  Unity Undo cannot cover AssetDatabase operations, safety is
+  pushed to the CLI surface: `--dry-run` on every mutation, default
+  `delete` goes to OS trash, and `--permanent` surfaces
+  `referenced_by` before committing. Agents that want hard deletes
+  have to opt in twice (flag + confirm).
+
 ## [0.4.0] - 2026-04-15
 
 First release of Phase 3 (**Mutate**). After this release agents can

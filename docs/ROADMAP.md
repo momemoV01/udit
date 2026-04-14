@@ -3,7 +3,7 @@
 [English](ROADMAP.md) | [한국어](ROADMAP.ko.md)
 
 > Living plan. 버전/우선순위는 실사용 피드백에 따라 조정됨.
-> Last updated: 2026-04-15 (v0.4.0 release)
+> Last updated: 2026-04-15 (v0.4.1 release)
 
 ## Vision
 
@@ -37,14 +37,15 @@
 | 2a | `v0.3.0` | **Observe — Scene & GO** | ✅ **Done** | Stable ID + `scene` + `go` |
 | 2b | `v0.3.1` | **Observe — Component & Asset** | ✅ **Done** | `component` + `asset` |
 | 3a | `v0.4.0` | **Mutate — GO & Component** | ✅ **Done** | `go create/destroy/move/rename/setactive` + `component add/remove/set/copy` + Undo + `--dry-run` |
-| 3b | `v0.4.x` | Mutate — Prefab & Asset + Transactions | 📋 Planned (다음) | `prefab instantiate/unpack/apply`, `asset create/move/delete/label`, multi-command Undo groups |
+| 3b | `v0.4.1` | **Mutate — ObjectRef + Prefab + Asset** | ✅ **Done** | `component set` ObjectReference write, `prefab instantiate/unpack/apply/find-instances`, `asset create/move/delete/label` |
+| 3c | `v0.4.x` | Mutate — Transactions | 📋 Planned (다음) | multi-command Undo groups via `Undo.CollapseUndoOperations` |
 | 4 | `v0.5.0` | **Automate** | 📋 Planned | 빌드/패키지 관리 |
 | 5 | `v0.6.0` | **Stream** | 📋 Planned | watch + log tail |
 | 6 | `v1.0.0` | **Polish & Freeze** | 📋 Planned | 테스트/문서/API 동결 |
 
 Phase 2는 원래 단일 릴리스였으나 실제 작업하며 **scene + go** 블록이 에이전트 체감 가치 라인(`exec` 의존도 급감)을 이미 넘는 것을 확인해 2a/2b로 분할. 2a를 v0.3.0, 2b를 v0.3.1로 짧게 끊어 출시 — 두 릴리스 모두 같은 4월 15일에 일어났지만 분리한 이유는 (i) v0.3.0 출시 직후 Public 전환 문제 발견과 분리, (ii) v0.3.1에서 추가된 commands가 의미 있는 단위로 묶여서.
 
-Phase 3도 같은 이유로 3a/3b 분할. **GO + Component mutation (3a)** 만으로 에이전트가 씬을 새로 구성할 수 있는 기본 loop(`create GO → addComponent → setField`)가 완성되어, 피드백 받으며 prefab/asset mutation (3b)를 증분 추가하는 게 실사용 스펙 정확도에 유리.
+Phase 3도 같은 이유로 3a/3b/3c 분할. **GO + Component mutation (3a, v0.4.0)** 만으로 에이전트가 씬을 새로 구성할 수 있는 기본 loop(`create GO → addComponent → setField`)가 완성. 피드백 받으며 ObjectReference 쓰기 + Prefab + Asset mutation (3b, v0.4.1)을 같은 날 patch로 추가, transactions (3c)는 cross-cutting이라 다른 것 다 들어간 후 마지막으로.
 
 ---
 
@@ -360,44 +361,92 @@ udit component copy go:SRC Type go:DST [--index N] [--dry-run]
 
 ---
 
-## Phase 3b: v0.4.x — Mutate (Prefab & Asset + Transactions)
+## Phase 3b: v0.4.1 — Mutate (ObjectRef + Prefab + Asset)
 
-**목표**: 3a의 기본 loop를 프로젝트 구조 관리까지 확장 + 복합 변경 원자성.
+**완료일**: 2026-04-15
 
-### 3.3 Prefab 인스턴싱
+**목표**: 3a의 기본 loop를 프로젝트 구조 관리까지 확장. v0.4.0의 "쓰기 반쪽" 상태(ObjectReference read-only) 해소 + Prefab/Asset 자체 mutation.
 
-```bash
-udit prefab instantiate Assets/Prefabs/Enemy.prefab --pos 5,0,0 [--parent go:XXX]
-udit prefab unpack go:XXX
-udit prefab apply go:XXX
-udit prefab find-instances Assets/Prefabs/Enemy.prefab
-```
-
-### 3.4 에셋 생성/이동/삭제
+### 3.2+ `component set` ObjectReference 쓰기 ✅
 
 ```bash
-udit asset create ScriptableObject --type GameConfig --path Assets/Config/
-udit asset move Assets/Old.prefab Assets/New/Moved.prefab
-udit asset delete Assets/Unused.prefab
-udit asset label add Assets/Prefabs/Boss.prefab boss_content
+udit component set go:X SpriteRenderer m_Sprite Assets/Sprites/Player.png
+udit component set go:X Material m_MainTex Assets/Textures/wall.jpg
+udit component set go:X AudioSource m_audioClip Assets/Sounds/hit.wav
+udit component set go:X Camera m_TargetTexture null                 # clear
 ```
 
-### 3.6 트랜잭션
+**Sub-asset auto-pick**: `.png` 경로가 `Texture2D` main + `Sprite` sub-asset으로 import됐을 때, `component set`이 target 필드 타입에 assign 가능한 **첫 sub-asset**을 자동 선택. 에이전트가 sub-asset 구조를 몰라도 됨.
+
+**타입 체크**: `SerializedProperty.type`이 `"PPtr<$Sprite>"` 형태 → wrapper strip → 모든 로드된 어셈블리에서 타입 resolve → `IsAssignableFrom` 확인. 실패 시 UCI-011 + 기대 타입 + 실제 발견된 타입 목록.
+
+**Clear**: `null`, `none`, `""` 모두 참조 clear.
+
+**씬 레퍼런스**: `go:XXXX`는 `SerializedProperty`의 별도 payload라 이 버전은 read-only + UCI-011 "use exec for now".
+
+### 3.3 Prefab 인스턴싱 ✅
+
+```bash
+udit prefab instantiate <path> [--parent go:P] [--pos x,y,z] [--dry-run]
+udit prefab unpack go:X [--mode root|completely] [--dry-run]
+udit prefab apply go:X [--dry-run]
+udit prefab find-instances <path>
+```
+
+새 `[UditTool]` 클래스 `ManagePrefab` → `manage_prefab`. `PrefabUtility.InstantiatePrefab`으로 에셋 링크 유지 (`Object.Instantiate`는 disconnect됨). `apply`/`unpack`은 caller가 nested GO를 넘겨도 자동으로 outermost root로 resolve. `find-instances`는 전체 씬 스캔으로 `{id, name, scene, path}` 반환.
+
+**Stable ID 변경 주의**: unpack 시 prefab 링크가 identity의 일부라서 `GlobalObjectId`가 바뀌고, 따라서 udit의 `go:` id도 바뀜. unpack 응답이 새 id를 반환하므로 후속 연산에 그것 사용. 옛 id는 UCI-042.
+
+### 3.4 에셋 생성/이동/삭제/라벨 ✅
+
+```bash
+udit asset create --type <TypeName> --path <path>   # ScriptableObject 또는 sentinel "Folder"
+udit asset move <src> <dst>
+udit asset delete <path> [--permanent]              # 기본 trash, --permanent로 DeleteAsset
+udit asset label <add|remove|list|set|clear> <path> [labels...]
+```
+
+**No Unity Undo**: AssetDatabase 연산(Create/Move/Delete/SetLabels)은 **씬 Undo에 참여 안 함**. Editor의 Ctrl+Z 불가. 안전장치는 `--dry-run` + `delete`의 기본 `MoveAssetToTrash` (OS 휴지통에서 복구). 이건 Unity API의 본질적 제약 — udit이 숨기기보단 문서화로 노출.
+
+**Path auto-resolve**: `--path`가 `/`로 끝나거나 기존 폴더면 `<TypeName>.asset` 자동 추가. 명시적 파일명도 OK.
+
+**Blast radius 노출**: `delete --permanent`는 먼저 전체 프로젝트 스캔해서 `referenced_by: N`을 dry-run에서 리포트 → 에이전트가 committing 전에 참조 수 인지.
+
+### Phase 3b 성공 기준
+
+- [x] `prefab instantiate`로 생성된 인스턴스가 stable ID로 추적 가능
+- [x] `component set`이 ObjectReference 쓰기 지원 (읽기 대칭성)
+- [x] Sub-asset auto-pick (Sprite from `.png` 등)
+- [x] `asset move`가 GUID 유지 (refs 안 깨짐)
+- [x] `asset delete` 기본 trash (복구 가능), `--permanent` 시 referenced_by 보고
+- [x] 모든 mutation dry-run
+
+**완료 commit 체인** (2026-04-15, v0.4.1):
+- `87ef711` feat(component): ObjectReference write support
+- `3959995` feat(prefab): instantiate/unpack/apply/find-instances
+- `46d6d1f` feat(asset): create/move/delete/label
+
+---
+
+## Phase 3c: v0.4.x — Mutate (Transactions)
+
+**목표**: 복합 변경의 원자성. 현재 각 mutation이 독립 Undo group이라 복합 변경 취소에 N번 Ctrl+Z 필요 — 트랜잭션 도입 시 1번으로 가능.
 
 ```bash
 udit tx begin
 udit go create --name Boss
 udit component add go:... Rigidbody
+udit component set go:... Rigidbody m_Mass 5.5
 udit tx commit   # 또는 udit tx rollback
 ```
 
-구현: `Undo.CollapseUndoOperations`로 여러 udit 명령을 단일 Undo 엔트리로 묶음. 현재는 각 mutation이 독립 Undo group이라 복합 변경 취소에 N번 Ctrl+Z 필요 — 트랜잭션 도입 시 1번으로 가능.
+구현: `Undo.CollapseUndoOperations(groupIndex)`로 `tx begin` 시점 group 이후의 모든 udit 명령을 단일 Undo 엔트리로 묶음. 상태는 session-level (HTTP는 stateless 원칙과 일부 충돌하니 신중한 설계 필요 — `Undo.GetCurrentGroup()` 기반 접근 검토).
 
-### Phase 3b 성공 기준
+### Phase 3c 성공 기준
 
-- [ ] `prefab instantiate`로 생성된 인스턴스가 stable ID로 추적 가능
-- [ ] `asset move/delete`가 dependencies 영향 범위를 dry-run으로 표시
+- [ ] 트랜잭션 begin/commit/rollback 구현
 - [ ] 트랜잭션 rollback 시 상태 완벽 복구
+- [ ] 트랜잭션 내 mutation이 단일 Undo 엔트리로 합쳐짐
 
 ---
 
@@ -713,6 +762,13 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | `component set` v1에서 ObjectReference/Curve/Gradient/ManagedReference는 read-only | 이 타입들은 set이 단순 파싱 이상 필요 — ObjectReference는 asset 경로 resolve + type check, Curve는 keyframe parse, ManagedReference는 runtime 타입 resolve. slice 7 범위에서 다 넣으면 C# 600+ 줄 되고 value-parser test suite도 비대해짐. MVP는 primitives + Vector/Color/Enum까지 cover하고 나머지는 명확한 UCI-011 + "read-only in this version" 메시지. 실사용 feedback 받은 뒤 v0.4.x에서 증분 |
 | 2026-04-15 | Phase 3도 3a/3b 분할 — v0.4.0은 GO + Component만 | Phase 2와 동일 근거. **GO + Component mutation (3a)** 만으로 에이전트가 씬 구성의 기본 loop (`create GO → addComponent → setField`) 실행 가능 = 에이전트 체감 가치 라인. Prefab/Asset mutation (3b)은 프로젝트 구조 관리에 가까워 우선순위 낮음. 3a 출시 후 실사용 피드백으로 3b 스펙 세밀화 |
 | 2026-04-15 | Unity 6 deprecation 정리 (FindObjectsByType/ShaderUtil/CopySerialized) | slice 7 live-test 중 발견. `EditorUtility.CopySerialized`는 반환 타입이 bool → void로 바뀌어 컴파일 에러 CS0023. `FindObjectsByType<T>(FindObjectsInactive, FindObjectsSortMode)` 오버로드는 deprecated — 단일 인자 오버로드 사용 (udit은 hierarchy path로 직접 sort 하므로 SortMode 무관). `ShaderUtil.GetPropertyCount/Name/Type`은 `Shader` 인스턴스 메서드로, enum도 `UnityEngine.Rendering.ShaderPropertyType`(TexEnv → Texture)로 이전 |
+| 2026-04-15 | `component set` ObjectReference 파싱: 에셋 경로 + sub-asset auto-pick | `SerializedProperty.type`이 `"PPtr<$Sprite>"` 형태로 기대 타입 노출 — wrapper strip 후 reflection으로 타입 resolve. `LoadAllAssetsAtPath`로 main + sub-assets 순회해 **타입 호환 첫 에셋** 자동 선택. 장점: 에이전트가 `.png` 경로만 주면 `SpriteRenderer.m_Sprite`엔 Sprite, `RawImage.texture`엔 Texture2D가 자동 할당됨 — sub-asset 구조 지식 불필요 |
+| 2026-04-15 | 씬 오브젝트 참조(`go:XXX`)는 `component set`에서 rejected | `SerializedProperty`의 ObjectReference는 asset PPtr payload를 쓰고, 씬 참조는 SceneObjectReference라는 다른 payload. 같은 write path로 처리하면 silently broken assignment 발생. 명시적 UCI-011 + "use exec for now" 메시지로 막고, 씬 참조 쓰기는 후속 슬라이스로 미룸 |
+| 2026-04-15 | Prefab 연산은 `ManagePrefab` 별도 도구로 | `manage_game_object`에 얹을 수도 있었으나 prefab은 asset ↔ scene instance 관계를 다루는 독립 concept이고 4개 서브커맨드 모두 prefab 고유 기능 (InstantiatePrefab, UnpackPrefabInstance, ApplyPrefabInstance, GetOutermostPrefabInstanceRoot). 별도 도구가 코드 구성 + 에이전트 vocabulary 둘 다 더 깔끔 |
+| 2026-04-15 | `prefab unpack` 후 stable ID가 바뀌는 것을 문서화 (숨기지 않음) | `GlobalObjectId`는 prefab 연결 정보를 identity에 포함 — unpack하면 id 자체가 변경됨. 이를 우회하려면 udit 쪽에서 별도 매핑을 유지해야 하는데 Stateless HTTP 원칙과 충돌하고, prefab 상태 변화가 실제로 identity 변화라는 점을 숨기는 건 부정확. unpack 응답에 **새 id** 를 반환하고 README에 명시적으로 문서화하는 길 선택 |
+| 2026-04-15 | AssetDatabase 연산은 Unity Undo 없음 — 명시적 caveat + trash 기본 | `AssetDatabase.CreateAsset/MoveAsset/DeleteAsset/SetLabels`는 Undo에 참여 안 함 (Unity API의 본질). 숨기기보다 help + README에서 명시적 표시. 안전장치: (i) 모든 mutation `--dry-run` 지원, (ii) `delete` 기본 `MoveAssetToTrash` (OS 휴지통 복구 가능), (iii) `delete --permanent --dry-run`은 full-project 스캔으로 `referenced_by: N` 보고 → 에이전트가 blast radius 확인 |
+| 2026-04-15 | `asset create --type Folder` sentinel 방식 | 폴더는 `AssetDatabase.CreateFolder(parent, child)`로 별도 API — 일반 CreateAsset과 signature 다름. 별도 `asset folder create` 명령 대신 `create` 안에서 `--type Folder`를 sentinel로 처리. 장점: 하나의 create surface로 통일, 에이전트가 `--type X --path Y` 패턴 하나로 외우면 됨 |
+| 2026-04-15 | Phase 3 분할 세분화 (3a/3b/3c) — v0.4.0/v0.4.1 day-1 patch | 원래 3a (v0.4.0) + 3b (prefab+asset+transactions, v0.4.x)로 계획했으나, 실제 작업 중 transactions만 cross-cutting이라 묶기 불편함을 발견. 3b에 ObjectReference set + prefab + asset mutation을 담아 v0.4.1로 cut하고, transactions는 3c로 별도 분리. Phase 2 때 v0.3.0 → v0.3.1 같은 날 릴리스 패턴 그대로 v0.4.0 → v0.4.1 |
 
 ---
 
@@ -742,7 +798,9 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] **v0.3.1 태그 push + Release 검증** (2026-04-15)
 - [x] Phase 3a 착수 — GO + Component mutation + Undo + dry-run (2026-04-15)
 - [x] **v0.4.0 태그 push + Release 검증** (2026-04-15)
+- [x] Phase 3b 착수 — ObjectReference set + Prefab + Asset mutation (2026-04-15)
+- [x] **v0.4.1 태그 push + Release 검증** (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
-- [ ] **Phase 3b** — `prefab instantiate/unpack/apply`, `asset create/move/delete/label`, transactions (`udit tx begin/commit/rollback`)
-- [ ] `component set`에서 ObjectReference/Curve/Gradient/ManagedReference 쓰기 지원 (v0.4.x 증분)
+- [ ] **Phase 3c** — Transactions (`udit tx begin/commit/rollback` via `Undo.CollapseUndoOperations`)
+- [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)
