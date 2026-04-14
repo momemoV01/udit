@@ -6,6 +6,17 @@ CLI tool to control Unity Editor from the command line. Agent-first fork of unit
 
 전체 로드맵은 [`docs/ROADMAP.md`](./docs/ROADMAP.md) 참고. 새 기능 작업 시 해당 문서의 Phase 스코프/성공 기준과 맞추고, 설계 결정은 **Decision Log** 섹션에 추가한다.
 
+## Claude Code Skills
+
+이 저장소는 `.claude/skills/` 에 프로젝트 전용 Skill을 포함한다. 반복적인 Unity 작업은 해당 스킬을 우선 호출한다.
+
+- `/unity-verify` — 스크립트 수정 후 compile → console → test 표준 검증 절차
+- `/unity-scene-edit` — YAML 에셋 텍스트 편집 후 reserialize 안전 플로우
+- `/unity-perf-check` — 프로파일러 활성화 → 시나리오 측정 → 상위 병목 리포트
+- `/udit-release` — udit 자체 버전 릴리스 절차 (verification → tag → CI → 바이너리)
+
+권한 정책은 `.claude/settings.json` 참고. Unity 에디터 플레이/정지, exec, reserialize, git push 등 영향 큰 명령은 `ask` 처리.
+
 ## Structure
 
 ```
