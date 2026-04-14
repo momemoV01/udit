@@ -166,7 +166,13 @@ namespace UditConnector.Tools
                 {
                     var stdout = proc.StandardOutput.ReadToEnd();
                     var stderr = proc.StandardError.ReadToEnd();
-                    proc.WaitForExit(30000);
+                    if (!proc.WaitForExit(30000))
+                    {
+                        // Compiler hung — kill it so we don't accumulate
+                        // orphan csc.exe processes across long sessions.
+                        try { proc.Kill(); } catch { /* may already exit */ }
+                        return new ErrorResponse("Compile timeout: csc did not finish within 30s.");
+                    }
 
                     if (proc.ExitCode != 0)
                     {

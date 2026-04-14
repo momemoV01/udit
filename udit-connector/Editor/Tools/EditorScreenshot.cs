@@ -11,6 +11,9 @@ namespace UditConnector.Tools
     {
         private const int DefaultWidth = 1920;
         private const int DefaultHeight = 1080;
+        // Safety cap — prevents OOM crashes when an agent passes absurd values.
+        // 8192 covers 8K (7680x4320) plus headroom.
+        private const int MaxDimension = 8192;
 
         public class Parameters
         {
@@ -37,6 +40,13 @@ namespace UditConnector.Tools
             var width = p.GetInt("width", DefaultWidth).Value;
             var height = p.GetInt("height", DefaultHeight).Value;
             var outputPath = ResolveOutputPath(p.Get("output_path"));
+
+            if (width <= 0 || height <= 0)
+                return new ErrorResponse($"Width/height must be positive (got {width}x{height}).");
+            if (width > MaxDimension || height > MaxDimension)
+                return new ErrorResponse(
+                    $"Width/height exceeds safety cap of {MaxDimension}px (got {width}x{height}). " +
+                    "Use smaller dimensions or take multiple screenshots.");
 
             try
             {

@@ -124,6 +124,64 @@ func TestBuildParams_BaseParams(t *testing.T) {
 	}
 }
 
+// Regression: previously `--filter true` wrongly became bool true because the
+// value happened to match the literal "true". After the switch/value-flag
+// split, a string value stays a string regardless of its content.
+func TestBuildParams_ValueLiteralTrueStaysString(t *testing.T) {
+	p, err := buildParams([]string{"--filter", "true"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := p["filter"].(string)
+	if !ok {
+		t.Fatalf("expected filter to be string, got %T (%v)", p["filter"], p["filter"])
+	}
+	if got != "true" {
+		t.Errorf("expected filter=\"true\", got %q", got)
+	}
+}
+
+// Regression: `--filter false` likewise must stay a string.
+func TestBuildParams_ValueLiteralFalseStaysString(t *testing.T) {
+	p, err := buildParams([]string{"--filter", "false"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := p["filter"].(string)
+	if !ok {
+		t.Fatalf("expected filter to be string, got %T (%v)", p["filter"], p["filter"])
+	}
+	if got != "false" {
+		t.Errorf("expected filter=\"false\", got %q", got)
+	}
+}
+
+// A switch flag with no value still produces bool true (existing behavior).
+func TestBuildParams_SwitchFlagIsBool(t *testing.T) {
+	p, err := buildParams([]string{"--wait"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := p["wait"].(bool)
+	if !ok || !got {
+		t.Errorf("expected wait=true (bool), got %v (%T)", p["wait"], p["wait"])
+	}
+}
+
+// Switch followed by another switch — both should be bool true.
+func TestBuildParams_TwoSwitches(t *testing.T) {
+	p, err := buildParams([]string{"--wait", "--clear"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p["wait"] != true {
+		t.Errorf("expected wait=true, got %v", p["wait"])
+	}
+	if p["clear"] != true {
+		t.Errorf("expected clear=true, got %v", p["clear"])
+	}
+}
+
 func sliceEqual(a, b []string) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true

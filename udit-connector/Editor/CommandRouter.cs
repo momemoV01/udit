@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using UnityEditor;
 using UnityEngine;
 
 namespace UditConnector
@@ -13,6 +14,14 @@ namespace UditConnector
     /// </summary>
     public static class CommandRouter
     {
+        // Read-only commands that are safe to run during compile/asset import.
+        // Everything else is rejected while Unity is busy to avoid hangs and
+        // partial-state crashes (most tools touch APIs that throw mid-reload).
+        static readonly System.Collections.Generic.HashSet<string> s_SafeWhileBusy = new()
+        {
+            "list",
+        };
+
         static readonly SemaphoreSlim s_Lock = new(1, 1);
 
         public static async Task<object> Dispatch(string command, JObject parameters)
@@ -30,6 +39,15 @@ namespace UditConnector
 
         static async Task<object> DispatchInternal(string command, JObject parameters)
         {
+            // Guard against running while Unity is mid-compile or mid-import.
+            if (!s_SafeWhileBusy.Contains(command))
+            {
+                if (EditorApplication.isCompiling)
+                    return new ErrorResponse("Unity is compiling — retry shortly.");
+                if (EditorApplication.isUpdating)
+                    return new ErrorResponse("Unity is updating (asset import in progress) — retry shortly.");
+            }
+
             if (command == "list")
                 return new SuccessResponse("Available tools", ToolDiscovery.GetToolSchemas());
 

@@ -4,6 +4,24 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+### Fixed
+- **ExecuteCsharp** now kills the `csc` process when compilation exceeds 30s,
+  preventing orphan processes from accumulating across long sessions.
+  ([Phase 1.1](./docs/ROADMAP.md#11-크리티컬-버그-픽스-from-unity-cli-분석))
+- **EditorScreenshot** caps width/height at 8192 to prevent OOM crashes from
+  accidental huge values, and rejects non-positive dimensions outright.
+- **CommandRouter** rejects most commands while Unity is compiling or
+  asset-importing, returning an actionable retry message instead of hanging
+  or crashing mid-reload. `list` (read-only) remains allowed.
+
+### Changed
+- **buildParams (Go CLI)** distinguishes "switch" flags (`--wait`) from value
+  flags (`--key value`). Previously `--filter true` was wrongly coerced to
+  bool true because the value happened to be the literal "true". Now string
+  values stay strings regardless of content; switches still produce bool true.
+  All existing tests pass; new regression tests cover the literal `"true"` /
+  `"false"` string cases and switch-flag behavior.
+
 ## [0.1.0] - 2026-04-14
 
 ### Forked from

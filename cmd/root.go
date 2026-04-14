@@ -182,7 +182,21 @@ func parseSubFlags(args []string) map[string]string {
 	return flags
 }
 
-// buildParams parses --flag value pairs and positional args from args and merges with base params.
+// buildParams parses CLI args into a params map.
+//
+// Flag forms:
+//
+//	--key value   → string (or int if value parses as integer)
+//	--key         → boolean true (a "switch" — no value follows)
+//
+// Distinguishing "switch" from "value flag" is critical: previously,
+// `--filter true` was parsed as bool true because the value happened to
+// match the literal "true". Now switches and value flags are tracked
+// separately so a string value like "true" stays a string.
+//
+// Positional args (no -- prefix) are collected into params["args"].
+// --params <json> overrides everything; remaining flags merge on top
+// without clobbering values already present in base or in --params.
 func buildParams(args []string, base map[string]interface{}) (map[string]interface{}, error) {
 	params := map[string]interface{}{}
 	for k, v := range base {
@@ -190,43 +204,50 @@ func buildParams(args []string, base map[string]interface{}) (map[string]interfa
 	}
 
 	var positional []string
-	flags := map[string]string{}
+	valFlags := map[string]string{}  // --key value
+	switchFlags := map[string]bool{} // --key (no value)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if strings.HasPrefix(a, "--") {
 			key := a[2:]
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				flags[key] = args[i+1]
+				valFlags[key] = args[i+1]
 				i++
 			} else {
-				flags[key] = "true"
+				switchFlags[key] = true
 			}
 		} else {
 			positional = append(positional, a)
 		}
 	}
 
-	if raw, ok := flags["params"]; ok {
+	if raw, ok := valFlags["params"]; ok {
 		if jsonErr := json.Unmarshal([]byte(raw), &params); jsonErr != nil {
 			return nil, fmt.Errorf("invalid JSON in --params: %w", jsonErr)
 		}
 	}
-	for k, v := range flags {
+
+	for k, v := range valFlags {
 		if k == "params" {
 			continue
 		}
 		if _, exists := params[k]; exists {
 			continue
 		}
+		// Try int parse, otherwise keep as string. No bool coercion here —
+		// switch-style booleans are handled below from switchFlags.
 		if n, err := strconv.Atoi(v); err == nil {
 			params[k] = n
-		} else if v == "true" {
-			params[k] = true
-		} else if v == "false" {
-			params[k] = false
 		} else {
 			params[k] = v
 		}
+	}
+
+	for k := range switchFlags {
+		if _, exists := params[k]; exists {
+			continue
+		}
+		params[k] = true
 	}
 
 	if len(positional) > 0 {
