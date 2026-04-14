@@ -315,6 +315,46 @@ udit component schema MyGame.PlayerController
 - 해당 타입이 GO에 없음, `--index` 범위 밖, `schema`에 live 인스턴스 없음 → `UCI-043`. 메시지가 실제 붙은 타입 목록 또는 인스턴스 수를 알려줌.
 - 필드 경로 없음 → `UCI-011` + 유효한 top-level 필드 목록.
 
+#### Component 변경 (v0.4.0+)
+
+`go` 변경과 동일한 Undo 통합 + `--dry-run` 표면. 필드 이름이 `component get`과 일치하므로 read/write vocabulary가 통일되어 있음.
+
+```bash
+# 컴포넌트 추가. DisallowMultipleComponent + RequireComponent 존중.
+udit component add go:9598abb1 --type Rigidbody
+
+# 제거. Transform은 차단 (대신 `go destroy` 사용).
+udit component remove go:9598abb1 Rigidbody
+
+# 필드 쓰기. 값은 필드의 SerializedPropertyType에 따라 파싱.
+udit component set go:9598abb1 Transform position 0,10,0
+udit component set go:9598abb1 Rigidbody m_Mass 2.5
+udit component set go:9598abb1 Camera m_BackGroundColor "#FF8800"
+udit component set go:9598abb1 Camera m_BackGroundColor "1,0,0,1"
+udit component set go:9598abb1 Camera m_ClearFlags "Solid Color"
+
+# 같은 타입 여러 개 붙어 있으면 --index 로 선택.
+udit component set go:abcd1234 BoxCollider m_Size 1,1,1 --index 1
+
+# GameObject 간 컴포넌트 복사 (없으면 dst에 add 먼저).
+udit component copy go:aaaa1111 Rigidbody go:bbbb2222
+```
+
+**값 파싱 요약:**
+| SerializedPropertyType | 입력 포맷 |
+| --- | --- |
+| Integer / LayerMask / Character | `"42"` |
+| Boolean | `"true"`, `"false"`, `"1"`, `"0"`, `"yes"`, `"no"`, `"on"`, `"off"` |
+| Float | `"3.14"` |
+| String | 임의 텍스트 |
+| Vector2 / 3 / 4 / Quaternion | 쉼표로 구분한 float (`"x,y"`, `"x,y,z"`, `"x,y,z,w"`) |
+| Color | 0–1 범위 float `"r,g,b[,a]"` 또는 `"#RRGGBB[AA]"` |
+| Enum | display name (`"Solid Color"`) 또는 value index |
+
+Transform은 `component set`에서도 **virtual field**를 노출: `position`, `local_position`, `rotation_euler`, `local_rotation_euler`, `local_scale` — 모두 `"x,y,z"`. `component get`이 반환하는 것과 동일하므로 round-trip 가능.
+
+ObjectReference / Curve / Gradient / ManagedReference은 이 버전에서 **읽기 전용**; set 시 `UCI-011` + 안내 메시지 반환.
+
 ### 에셋 쿼리
 
 AssetDatabase 조회 — Prefab, Texture, Material, Script, Unity가 인덱싱하는 모든 것. 경로는 프로젝트 상대(`Assets/...` 또는 `Packages/...`), GUID는 Unity의 32자 hex.

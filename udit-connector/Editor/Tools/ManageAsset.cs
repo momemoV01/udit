@@ -372,25 +372,30 @@ namespace UditConnector.Tools
             var properties = new List<object>();
             if (shader != null)
             {
-                var count = ShaderUtil.GetPropertyCount(shader);
+                // Unity 2021.2+ prefers the Shader instance methods over
+                // ShaderUtil.*. The enum moved from ShaderUtil.
+                // ShaderPropertyType to UnityEngine.Rendering.
+                // ShaderPropertyType and the Texture case was renamed from
+                // TexEnv -> Texture.
+                var count = shader.GetPropertyCount();
                 for (int i = 0; i < count; i++)
                 {
-                    var propName = ShaderUtil.GetPropertyName(shader, i);
-                    var propType = ShaderUtil.GetPropertyType(shader, i);
+                    var propName = shader.GetPropertyName(i);
+                    var propType = shader.GetPropertyType(i);
                     object value = null;
                     try
                     {
                         switch (propType)
                         {
-                            case ShaderUtil.ShaderPropertyType.Color:  value = Col(mat.GetColor(propName)); break;
-                            case ShaderUtil.ShaderPropertyType.Float:
-                            case ShaderUtil.ShaderPropertyType.Range:  value = mat.GetFloat(propName); break;
-                            case ShaderUtil.ShaderPropertyType.Vector: value = V4(mat.GetVector(propName)); break;
-                            case ShaderUtil.ShaderPropertyType.TexEnv:
+                            case UnityEngine.Rendering.ShaderPropertyType.Color:   value = Col(mat.GetColor(propName)); break;
+                            case UnityEngine.Rendering.ShaderPropertyType.Float:
+                            case UnityEngine.Rendering.ShaderPropertyType.Range:   value = mat.GetFloat(propName); break;
+                            case UnityEngine.Rendering.ShaderPropertyType.Vector:  value = V4(mat.GetVector(propName)); break;
+                            case UnityEngine.Rendering.ShaderPropertyType.Texture:
                                 var tex = mat.GetTexture(propName);
                                 value = tex != null ? new { type = tex.GetType().Name, name = tex.name } : null;
                                 break;
-                            case ShaderUtil.ShaderPropertyType.Int:    value = mat.GetInteger(propName); break;
+                            case UnityEngine.Rendering.ShaderPropertyType.Int:     value = mat.GetInteger(propName); break;
                         }
                     }
                     catch { /* material may not have this property set */ }

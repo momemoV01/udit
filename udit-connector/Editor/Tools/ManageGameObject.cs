@@ -103,12 +103,13 @@ namespace UditConnector.Tools
                 nameRegex = new Regex(pattern, RegexOptions.IgnoreCase);
             }
 
-            // FindObjectsByType walks all loaded scenes in one shot and is the
-            // non-deprecated replacement for FindObjectsOfType. SortMode.None
-            // matters — we sort by instance path ourselves for determinism.
+            // FindObjectsByType walks all loaded scenes in one shot. Unity 6
+            // deprecated the SortMode overload; the new single-arg overload
+            // returns in unspecified order, which is fine here because we
+            // sort by hierarchy path ourselves below for deterministic
+            // pagination.
             var transforms = UnityEngine.Object.FindObjectsByType<Transform>(
-                includeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude,
-                FindObjectsSortMode.None);
+                includeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude);
 
             var matches = new List<GameObject>();
             foreach (var t in transforms)

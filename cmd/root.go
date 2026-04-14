@@ -400,6 +400,11 @@ Components:
   component get go:XXXXXXXX <Type> [field]         Dump one component, optionally one field
   component get go:XXXXXXXX <Type> --index N       Pick Nth instance when multiple attached
   component schema <Type>                          Type schema (requires a live instance)
+  component add go:XXXXXXXX --type <Type>          Add a component (Undo-safe)
+  component remove go:XXXXXXXX <Type> [--index N]  Remove a component
+  component set go:XXX <Type> <field> <value>      Write one field (Undo-safe)
+  component copy go:SRC <Type> go:DST              Copy a component between GameObjects
+  (mutations accept --dry-run)
 
 Assets:
   asset find [--type Prefab] [--label X] [--name G] [--folder F]   Query project assets
@@ -632,54 +637,77 @@ Notes:
     full array contents.
 `)
 	case "component":
-		fmt.Print(`Usage: udit component <list|get|schema> [options]
+		fmt.Print(`Usage: udit component <list|get|schema|add|remove|set|copy> [options]
 
-Read component values and type schemas. Field names mirror what ` + "`go inspect`" + `
+Read and mutate component values. Field names mirror what ` + "`go inspect`" + `
 emits, so the same vocabulary works end-to-end: find a GameObject, inspect
-it, zoom in on one field via ` + "`component get`" + `.
+it, zoom in via ` + "`component get`" + `, then edit via ` + "`component set`" + `.
 
-Subcommands:
+Read subcommands:
   list <go:XXXXXXXX>
       Enumerate components on a GameObject. Each entry has
-      { index, type, full_type, enabled }. Lighter than ` + "`go inspect`" + ` when
-      you only need the attached types.
-
+      { index, type, full_type, enabled }.
   get <go:XXXXXXXX> <TypeName> [field]
-      Dump one component. Without a field, returns every visible property
-      (same shape as the matching entry in ` + "`go inspect`" + `). With a dotted
-      field path ("position", "position.x", "m_Cameras.elements.0"), returns
-      just the leaf value.
+      Dump one component. Without a field, returns every visible property.
+      With a dotted field path ("position", "position.x", "m_Cameras.elements.0"),
+      returns just the leaf value.
       --index N     Pick the Nth component when multiple of the same type
                     are attached (e.g. two BoxColliders). Default 0.
-
   schema <TypeName>
-      Emit the serialized-property schema for a component type. Requires a
-      live instance of the type in the loaded scenes (v1 probes an existing
-      instance rather than spawning one, because AddComponent has side
-      effects like RequireComponent chains). Fields include
-      { name, display_name, property_type, is_array, has_children }.
+      Serialized-property schema for a type. Requires a live instance in
+      the loaded scenes (v1 probes existing rather than spawning).
+
+Mutation subcommands (all support --dry-run, all routed through Unity Undo):
+  add <go:XXXXXXXX> --type <TypeName>
+      Add a component. Respects DisallowMultipleComponent + RequireComponent.
+      Transform cannot be re-added (every GameObject has one already).
+  remove <go:XXXXXXXX> <TypeName> [--index N]
+      Remove a component. Transform cannot be removed — destroy the
+      GameObject with ` + "`go destroy`" + ` instead.
+  set <go:XXXXXXXX> <TypeName> <field> <value> [--index N]
+      Write one field. Value is parsed based on the field's
+      SerializedPropertyType:
+        Integer/LayerMask/ArraySize/Character : "42"
+        Boolean                               : "true" / "false" / 1 / 0 / yes / no
+        Float                                 : "3.14"
+        String                                : anything
+        Vector2                               : "x,y"
+        Vector3                               : "x,y,z"
+        Vector4 / Quaternion                  : "x,y,z,w"
+        Color                                 : "r,g,b[,a]" (0..1 floats) or "#RRGGBB[AA]"
+        Enum                                  : display name ("Solid Color") or value
+      Transform has virtual fields that use Transform API directly for
+      world-space: "position", "local_position", "rotation_euler",
+      "local_rotation_euler", "local_scale" — all take "x,y,z".
+      ObjectReference/Curve/Gradient/ManagedReference are read-only for now.
+  copy <go:SRC> <TypeName> <go:DST> [--index N]
+      Copy a component from source to destination via
+      EditorUtility.CopySerialized. If destination lacks that type,
+      AddComponent runs first. Transform cannot be copied this way.
 
 Type name matching:
   - Case-insensitive.
-  - Unqualified short names resolve against UnityEngine.* first, so
-    ` + "`Transform`" + ` and ` + "`UnityEngine.Transform`" + ` are equivalent.
-  - For project-local types that shadow a UnityEngine name, pass the full
-    namespace ("MyGame.Transform") to disambiguate.
+  - Unqualified short names resolve against UnityEngine.* first.
+  - Pass the full namespace ("MyGame.Transform") for project types that
+    shadow a UnityEngine name.
 
 Examples:
   udit component list go:9598abb1
-  udit component get go:9598abb1 Transform
   udit component get go:9598abb1 Transform position
-  udit component get go:9598abb1 Transform local_position.z
-  udit component get go:abcd1234 BoxCollider --index 1
   udit component schema Rigidbody
-  udit component schema MyGame.PlayerController
+  udit component add go:9598abb1 --type Rigidbody
+  udit component set go:9598abb1 Transform position 0,10,0
+  udit component set go:9598abb1 Camera m_BackGroundColor "#FF8800"
+  udit component set go:9598abb1 Camera m_ClearFlags "Solid Color"
+  udit component remove go:9598abb1 Rigidbody
+  udit component copy go:aaaa1111 Rigidbody go:bbbb2222
 
 Notes:
-  - Unknown go: IDs -> UCI-042 (see docs/ERROR_CODES.md).
-  - Missing type, bad index, or schema-without-instance -> UCI-043.
-  - A field path that does not exist -> UCI-011 with the list of top-level
-    fields so the agent can pick a valid one.
+  - Mutations are blocked in play mode and register with Unity Undo; each
+    gets its own group so Ctrl+Z reverses one logical change at a time.
+  - Unknown go: IDs -> UCI-042. Missing type, bad index, no live instance
+    for schema -> UCI-043. Field not found or unsupported for writing ->
+    UCI-011 with guidance (valid field names, supported property types).
 `)
 	case "asset":
 		fmt.Print(`Usage: udit asset <find|inspect|dependencies|references|guid|path> [options]

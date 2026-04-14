@@ -314,6 +314,46 @@ Failure modes:
 - Type not on the GameObject, bad `--index`, or `schema` with no live instance → `UCI-043`; the message enumerates attached types or instance count so agents can self-correct.
 - Field path does not exist → `UCI-011` with the list of valid top-level fields.
 
+#### Component mutation (v0.4.0+)
+
+Same Undo integration and `--dry-run` surface as `go` mutations. Field names match what `component get` emits, so the read/write vocabulary is unified.
+
+```bash
+# Add a component. Respects DisallowMultipleComponent + RequireComponent.
+udit component add go:9598abb1 --type Rigidbody
+
+# Remove one. Transform is blocked (use `go destroy` instead).
+udit component remove go:9598abb1 Rigidbody
+
+# Write a field. The value is parsed based on the field's SerializedPropertyType.
+udit component set go:9598abb1 Transform position 0,10,0
+udit component set go:9598abb1 Rigidbody m_Mass 2.5
+udit component set go:9598abb1 Camera m_BackGroundColor "#FF8800"
+udit component set go:9598abb1 Camera m_BackGroundColor "1,0,0,1"
+udit component set go:9598abb1 Camera m_ClearFlags "Solid Color"
+
+# Pick the Nth instance when multiple of the same type are attached.
+udit component set go:abcd1234 BoxCollider m_Size 1,1,1 --index 1
+
+# Copy one component between GameObjects (adds on dest if missing).
+udit component copy go:aaaa1111 Rigidbody go:bbbb2222
+```
+
+**Value parsing cheat sheet:**
+| SerializedPropertyType | Input format |
+| --- | --- |
+| Integer / LayerMask / Character | `"42"` |
+| Boolean | `"true"`, `"false"`, `"1"`, `"0"`, `"yes"`, `"no"`, `"on"`, `"off"` |
+| Float | `"3.14"` |
+| String | any text |
+| Vector2 / 3 / 4 / Quaternion | comma-separated floats (`"x,y"`, `"x,y,z"`, `"x,y,z,w"`) |
+| Color | `"r,g,b[,a]"` in 0–1 range, or `"#RRGGBB[AA]"` |
+| Enum | display name (`"Solid Color"`) or value index |
+
+Transform exposes **virtual fields** for world + local coordinates on `component set` as well: `position`, `local_position`, `rotation_euler`, `local_rotation_euler`, `local_scale` — all take `"x,y,z"`. This matches what `component get` returns, so round-tripping works.
+
+ObjectReference / Curve / Gradient / ManagedReference are **read-only** in this version; attempting to set them returns `UCI-011` with guidance.
+
 ### Assets
 
 Query the AssetDatabase — prefabs, textures, materials, scripts, and anything else Unity indexes. Paths are project-relative (`Assets/...` or `Packages/...`), GUIDs are Unity's 32-char hex strings.
