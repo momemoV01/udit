@@ -21,7 +21,6 @@ namespace UditConnector.Tools
         // variant resolution context — likely never set this way from CLI).
         static readonly System.Collections.Generic.HashSet<SerializedPropertyType> s_UnsupportedSet = new()
         {
-            SerializedPropertyType.ManagedReference,
             SerializedPropertyType.ExposedReference,
         };
 
@@ -904,6 +903,14 @@ namespace UditConnector.Tools
                         return true;
                     }
 
+                case SerializedPropertyType.ManagedReference:
+                    {
+                        oldJsonValue = SerializedInspect.DescribeManagedReference(prop);
+                        if (!TryParseManagedReference(prop, value, out _, out _, out var perr))
+                        { error = perr; return false; }
+                        return true;
+                    }
+
                 default:
                     {
                         var unsupportedNames = string.Join(", ", s_UnsupportedSet);
@@ -985,6 +992,19 @@ namespace UditConnector.Tools
                 case SerializedPropertyType.Gradient:
                     if (TryParseGradient(value, out var gradient, out _))
                         prop.gradientValue = gradient;
+                    break;
+                case SerializedPropertyType.ManagedReference:
+                    if (TryParseManagedReference(prop, value, out var clear, out var mrInstance, out _))
+                    {
+                        // Undo.RecordObject doesn't snapshot the polymorphic
+                        // graph cleanly. RegisterCompleteObjectUndo captures
+                        // the full SerializedObject state so Ctrl-Z restores
+                        // the previous managedReferenceValue correctly.
+                        var target = prop.serializedObject.targetObject;
+                        if (target != null)
+                            Undo.RegisterCompleteObjectUndo(target, "udit component set (ManagedReference)");
+                        prop.managedReferenceValue = clear ? null : mrInstance;
+                    }
                     break;
             }
         }
@@ -1314,6 +1334,167 @@ namespace UditConnector.Tools
                 return true;
             }
             error = $"Unknown GradientMode '{s}'. Accepted: Blend, Fixed, PerceptualBlend.";
+            return false;
+        }
+
+        /// <summary>
+        /// Parse a ManagedReference value. Shape:
+        ///   {"$type":"Namespace.Concrete, Assembly-CSharp", ...fields}
+        ///   {"$type":"Namespace.Concrete", ...}      ← short-name fallback
+        ///   null | "null" | "none" | ""              ← clear
+        ///
+        /// Returns two output signals:
+        ///   - clear=true → caller writes prop.managedReferenceValue = null.
+        ///   - clear=false + instance non-null → caller writes that instance.
+        /// Both cases return true from the function (parse succeeded).
+        /// </summary>
+        static bool TryParseManagedReference(SerializedProperty prop, string value,
+            out bool clear, out object instance, out string error)
+        {
+            clear = false;
+            instance = null;
+            error = null;
+
+            if (string.IsNullOrEmpty(value) ||
+                string.Equals(value, "null", System.StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value, "none", System.StringComparison.OrdinalIgnoreCase))
+            {
+                clear = true;
+                return true;
+            }
+
+            // Parse the outer envelope with Newtonsoft so we can extract $type
+            // and strip it from the body. The residual body will be passed to
+            // JsonUtility.FromJsonOverwrite — which uses Unity's native
+            // [SerializeField] rules and matches how the instance would be
+            // serialized to disk.
+            JObject envelope;
+            try { envelope = JObject.Parse(value); }
+            catch (System.Exception ex) { error = $"ManagedReference: invalid JSON — {ex.Message}"; return false; }
+
+            var typeTok = envelope["$type"];
+            if (typeTok == null || typeTok.Type != JTokenType.String)
+            {
+                error = "ManagedReference: JSON must contain a `$type` string (AQN like 'MyNs.Foo, Assembly-CSharp' or a short 'MyNs.Foo').";
+                return false;
+            }
+
+            // Field base-type. Unity's managedReferenceFieldTypename is
+            // space-separated "Assembly TypeFullName" (known quirk, NOT AQN).
+            var baseName = prop.managedReferenceFieldTypename;
+            System.Type baseType = null;
+            if (!string.IsNullOrEmpty(baseName))
+            {
+                var parts = baseName.Split(' ');
+                if (parts.Length >= 2)
+                {
+                    baseType = System.Type.GetType($"{parts[1]}, {parts[0]}", throwOnError: false);
+                }
+            }
+
+            if (!TryResolveManagedType(typeTok.ToString(), baseType, out var concreteType, out var typeError))
+            { error = typeError; return false; }
+
+            // Construct without invoking any ctor — lets agents target types
+            // that don't have a parameterless constructor (Unity's
+            // serialization ignores ctors anyway).
+            object newInstance;
+            try { newInstance = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(concreteType); }
+            catch (System.Exception ex)
+            {
+                error = $"ManagedReference: cannot instantiate {concreteType.FullName}: {ex.Message}";
+                return false;
+            }
+
+            // Strip $type and hand the residual JSON to JsonUtility. The only
+            // fields that matter are Unity's [SerializeField] + public-field
+            // set; JsonUtility handles the rest identically to Unity's own
+            // disk-read path. Nested [SerializeReference] is a known
+            // limitation — won't recurse.
+            envelope.Remove("$type");
+            var fieldsJson = envelope.ToString();
+            try { JsonUtility.FromJsonOverwrite(fieldsJson, newInstance); }
+            catch (System.Exception ex)
+            {
+                error = $"ManagedReference: FromJsonOverwrite failed for {concreteType.FullName}: {ex.Message}";
+                return false;
+            }
+
+            instance = newInstance;
+            return true;
+        }
+
+        /// <summary>
+        /// Resolve a ManagedReference `$type` string into a runtime Type.
+        /// Algorithm (plan D2):
+        ///   1. Try Type.GetType(value) — handles AQN including generics.
+        ///   2. On failure + value looks like AQN (has ", "), try the
+        ///      TypeCache to catch [MovedFrom] rewrites Unity applies.
+        ///   3. Bare short name → TypeCache.GetTypesDerivedFrom(baseType)
+        ///      with FullName match.
+        /// Ambiguity for short names → list candidates in the error.
+        /// </summary>
+        static bool TryResolveManagedType(string typeName, System.Type baseType,
+            out System.Type type, out string error)
+        {
+            type = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(typeName))
+            {
+                error = "ManagedReference: $type is empty.";
+                return false;
+            }
+
+            // Step 1: direct Type.GetType covers AQN + generics.
+            var direct = System.Type.GetType(typeName, throwOnError: false);
+            if (direct != null)
+            {
+                if (baseType != null && !baseType.IsAssignableFrom(direct))
+                {
+                    error = $"ManagedReference: type {direct.FullName} is not assignable to field type {baseType.FullName}.";
+                    return false;
+                }
+                type = direct;
+                return true;
+            }
+
+            // Step 2+3: scan TypeCache for FullName matches.
+            var candidates = new List<System.Type>();
+            if (baseType != null)
+            {
+                foreach (var t in UnityEditor.TypeCache.GetTypesDerivedFrom(baseType))
+                {
+                    if (t.IsAbstract || t.IsGenericTypeDefinition) continue;
+                    if (t.FullName == typeName || t.AssemblyQualifiedName == typeName) candidates.Add(t);
+                }
+            }
+            else
+            {
+                foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        var t = asm.GetType(typeName, throwOnError: false);
+                        if (t != null && !t.IsAbstract && !t.IsGenericTypeDefinition) candidates.Add(t);
+                    }
+                    catch { /* ignore asm load quirks */ }
+                }
+            }
+
+            if (candidates.Count == 1)
+            {
+                type = candidates[0];
+                return true;
+            }
+            if (candidates.Count == 0)
+            {
+                error = baseType != null
+                    ? $"ManagedReference: no type named '{typeName}' assignable to {baseType.FullName} in loaded assemblies."
+                    : $"ManagedReference: no type named '{typeName}' in loaded assemblies.";
+                return false;
+            }
+            var list = string.Join(" | ", candidates.Select(c => c.AssemblyQualifiedName));
+            error = $"ManagedReference: '{typeName}' is ambiguous — {candidates.Count} matches. Use a fully-qualified name. Candidates: {list}";
             return false;
         }
 

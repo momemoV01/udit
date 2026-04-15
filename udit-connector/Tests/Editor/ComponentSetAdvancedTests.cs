@@ -311,6 +311,182 @@ namespace UditConnector.Tests
             return ok ? (UnityEngine.Object)args[2] : null;
         }
 
+        // ---------- ManagedReference ----------
+
+        // Types used by ManagedReference fixtures. Keeping them in the
+        // test namespace so short-name resolution has a deterministic
+        // assembly target.
+        public interface IManagedShape { }
+
+        [System.Serializable]
+        public class ManagedCircle : IManagedShape
+        {
+            public float radius;
+        }
+
+        [System.Serializable]
+        public class ManagedSquare : IManagedShape
+        {
+            public float side;
+        }
+
+        public class ManagedShapeHolder : ScriptableObject
+        {
+            [SerializeReference]
+            public IManagedShape shape;
+        }
+
+        [Test]
+        public void ManagedReference_AQNAssignsAndPopulatesFields()
+        {
+            var so = ScriptableObject.CreateInstance<ManagedShapeHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("shape");
+
+                var aqn = typeof(ManagedCircle).AssemblyQualifiedName;
+                var json = $@"{{""$type"":""{aqn}"",""radius"":5.5}}";
+
+                var (clear, instance, err) = InvokeTryParseManagedReference(prop, json);
+                Assert.IsNull(err, "unexpected err: " + err);
+                Assert.IsFalse(clear);
+                Assert.IsNotNull(instance);
+                Assert.IsInstanceOf<ManagedCircle>(instance);
+                Assert.AreEqual(5.5f, ((ManagedCircle)instance).radius, 1e-6);
+
+                prop.managedReferenceValue = instance;
+                sobj.ApplyModifiedProperties();
+                sobj.Update();
+
+                var live = sobj.FindProperty("shape").managedReferenceValue;
+                Assert.IsInstanceOf<ManagedCircle>(live);
+                Assert.AreEqual(5.5f, ((ManagedCircle)live).radius, 1e-6);
+            }
+            finally
+            {
+                Object.DestroyImmediate(so);
+            }
+        }
+
+        [Test]
+        public void ManagedReference_ShortNameResolvesWhenUnique()
+        {
+            var so = ScriptableObject.CreateInstance<ManagedShapeHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("shape");
+
+                var shortName = typeof(ManagedSquare).FullName;
+                var json = $@"{{""$type"":""{shortName}"",""side"":3}}";
+
+                var (_, instance, err) = InvokeTryParseManagedReference(prop, json);
+                Assert.IsNull(err, "unexpected err: " + err);
+                Assert.IsInstanceOf<ManagedSquare>(instance);
+                Assert.AreEqual(3f, ((ManagedSquare)instance).side, 1e-6);
+            }
+            finally
+            {
+                Object.DestroyImmediate(so);
+            }
+        }
+
+        [Test]
+        public void ManagedReference_NullClearViaBareString()
+        {
+            var so = ScriptableObject.CreateInstance<ManagedShapeHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("shape");
+
+                // Pre-populate so clearing has something to clear.
+                prop.managedReferenceValue = new ManagedCircle { radius = 1 };
+                sobj.ApplyModifiedProperties();
+
+                foreach (var val in new[] { "null", "NONE", "" })
+                {
+                    sobj.Update();
+                    var p = sobj.FindProperty("shape");
+                    var (clear, instance, err) = InvokeTryParseManagedReference(p, val);
+                    Assert.IsNull(err, $"value '{val}' err: {err}");
+                    Assert.IsTrue(clear, $"value '{val}' should signal clear");
+                    Assert.IsNull(instance);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(so);
+            }
+        }
+
+        [Test]
+        public void ManagedReference_RejectsMissingType()
+        {
+            var so = ScriptableObject.CreateInstance<ManagedShapeHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("shape");
+
+                var json = @"{""$type"":""NoSuchType.Anywhere"",""radius"":1}";
+                var (_, _, err) = InvokeTryParseManagedReference(prop, json);
+                Assert.IsNotNull(err);
+                Assert.That(err, Does.Contain("no type named"));
+            }
+            finally { Object.DestroyImmediate(so); }
+        }
+
+        [Test]
+        public void ManagedReference_RejectsTypeNotAssignableToBase()
+        {
+            var so = ScriptableObject.CreateInstance<ManagedShapeHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("shape");
+
+                // System.String is not assignable to IManagedShape.
+                var json = @"{""$type"":""System.String""}";
+                var (_, _, err) = InvokeTryParseManagedReference(prop, json);
+                Assert.IsNotNull(err);
+                Assert.That(err, Does.Contain("not assignable").Or.Contain("no type named"));
+            }
+            finally { Object.DestroyImmediate(so); }
+        }
+
+        [Test]
+        public void ManagedReference_RejectsMissingTypeKey()
+        {
+            var so = ScriptableObject.CreateInstance<ManagedShapeHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("shape");
+
+                var json = @"{""radius"":5}"; // no $type
+                var (_, _, err) = InvokeTryParseManagedReference(prop, json);
+                Assert.IsNotNull(err);
+                Assert.That(err, Does.Contain("$type"));
+            }
+            finally { Object.DestroyImmediate(so); }
+        }
+
+        static (bool clear, object instance, string error)
+            InvokeTryParseManagedReference(SerializedProperty prop, string value)
+        {
+            var m = typeof(ManageComponent).GetMethod(
+                "TryParseManagedReference",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assert.IsNotNull(m, "TryParseManagedReference not found — renamed?");
+            var args = new object[] { prop, value, null, null, null };
+            var ok = (bool)m.Invoke(null, args);
+            return ok
+                ? ((bool)args[2], args[3], null)
+                : (false, null, (string)args[4]);
+        }
+
         // ---------- Shims for private parser ----------
         //
         // ManageComponent.TryParseAnimationCurve is `static` but private

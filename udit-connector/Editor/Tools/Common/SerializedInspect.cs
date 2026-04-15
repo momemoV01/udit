@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -173,7 +174,7 @@ namespace UditConnector.Tools.Common
                     return DescribeObjectReference(p.exposedReferenceValue);
 
                 case SerializedPropertyType.ManagedReference:
-                    return new { type = p.managedReferenceFullTypename, id = p.managedReferenceId };
+                    return DescribeManagedReference(p);
 
                 case SerializedPropertyType.Generic:
                     return p.isArray ? ReadArray(p) : ReadGeneric(p);
@@ -287,6 +288,61 @@ namespace UditConnector.Tools.Common
                 alphaKeys = alphaObjs,
                 mode = gradient.mode.ToString(),
             };
+        }
+
+        /// <summary>
+        /// Renders the current ManagedReference value in the same JSON
+        /// shape `component set <field> <value>` accepts: `$type` (AQN)
+        /// plus the serialized fields JsonUtility emits for the instance.
+        /// Returns null when the ref is unset or the instance disappeared
+        /// (managedReferenceValue throws NRE in some post-reload states —
+        /// swallow silently).
+        /// </summary>
+        internal static object DescribeManagedReference(SerializedProperty p)
+        {
+            var typename = p.managedReferenceFullTypename;
+            if (string.IsNullOrEmpty(typename)) return null;
+
+            object instance;
+            try { instance = p.managedReferenceValue; }
+            catch { return new { type_name = typename }; }
+
+            // Convert "Assembly TypeFullName" (space-separated Unity quirk)
+            // into a proper assembly-qualified name so write-side can round-
+            // trip via Type.GetType.
+            var parts = typename.Split(' ');
+            var aqn = parts.Length >= 2 ? $"{parts[1]}, {parts[0]}" : typename;
+
+            if (instance == null)
+            {
+                // Type declared, value unset. Write-side treats this as
+                // "clear" via bare "null" / "none" / "". Emit $type for
+                // discoverability so agents know the field's expected type.
+                return new { type_name = typename };
+            }
+
+            // JsonUtility produces the same serialization shape Unity uses
+            // on disk — matches what FromJsonOverwrite will read when we
+            // go the other direction.
+            string fieldsJson;
+            try { fieldsJson = JsonUtility.ToJson(instance); }
+            catch { return new { type_name = typename, aqn = aqn }; }
+
+            try
+            {
+                var jo = JObject.Parse(fieldsJson);
+                // Preserve field ordering by prepending $type.
+                var ordered = new JObject { ["$type"] = aqn };
+                foreach (var prop in jo.Properties())
+                {
+                    ordered[prop.Name] = prop.Value;
+                }
+                return ordered;
+            }
+            catch
+            {
+                return new { type_name = typename, aqn = aqn, fields = fieldsJson };
+            }
         }
 
         static string ColorToHex(Color c)
