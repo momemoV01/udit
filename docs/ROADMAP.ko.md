@@ -864,3 +864,4 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.9.0, Connector 0.9.0, 2026-04-15) — 첫 connector-side NUnit 테스트 인프라 동반
 - [x] 대규모 씬 성능 측정 (10,010 GO 씬에서 `scene tree`/`go find`/`component get`/`asset references`/`asset dependencies` 실측, 2026-04-15 — Decision Log 참고)
 - [x] 테스트 커버리지 gap fill (Sprint 3 C2, 5 slices 2026-04-16 — Decision Log 참고): Go cmd 52.9%→57.9%, internal/watch 87.2%→88.9%, Connector NUnit 19→42 tests
+- [x] README 첫 인상 다듬기 (Sprint 3 C3, 2026-04-16): outdated LOC 수치 / 태그 예시 / Roadmap highlights를 현재 상태 반영하게 갱신. 한·영 양쪽 sync. **Sprint 3 전체 완결** — Sprint 4 (Public 전환)로 진행 가능
