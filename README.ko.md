@@ -1156,6 +1156,30 @@ udit --port 8591 editor play
 udit editor play
 ```
 
+## 성능
+
+실제 방치형 게임 프로젝트(에셋 약 10,762개) 씬에 10,010개 GameObject(루트 10개 × 자식 1,000개)를 넣고 측정. 시간은 wall-clock (CLI + HTTP + Unity 왕복), N=3 평균.
+
+| 쿼리 | ms (평균) | 페이로드 | 비고 |
+|---|---:|---:|---|
+| `scene tree` (전체 깊이) | ~550 | 2.0 MB | 전체 계층 + 컴포넌트 JSON |
+| `go find --name "Bench*"` | ~760 | 194 KB | 매치 10,010, 페이지 1,000 |
+| `go find --component Transform` | ~730 | 194 KB | 매치 10,015, 페이지 1,000 |
+| `go inspect <id>` | ~450 | 0.9 KB | 단일 GO, 컴포넌트 전체 덤프 |
+| `component get <id> Transform` | ~450 | 0.6 KB | 단일 필드 계열 |
+| `asset references <path>` | ~960 | 0.4 KB | 프로젝트 전체 스캔(에셋 10,762개, Unity는 역방향 인덱스 없음) |
+| `asset dependencies <path>` | ~440 | 0.1 KB | 직접 의존만 |
+
+**해석**
+
+- 10k GO 씬에서 일반 쿼리 모두 1초 이내 완료. 에이전트 인터랙티브 워크플로에 충분.
+- cold/warm 차이 미미 — Unity가 매번 메인 스레드에서 재계산하고 CLI는 캐시 안 함.
+- `asset references`는 Unity에 역방향 의존 인덱스가 없어 프로젝트 전체 스캔. 응답에 `scan_ms` + `scanned_assets` 포함되어 에이전트가 비용 판단 가능.
+- `scene tree` 페이로드는 GO 수에 선형 비례. 전체 계층이 필요 없으면 `--depth N` 로 자르기.
+- 측정 머신: Intel Core Ultra 7 265KF / 64 GB / Windows 11 Pro, Unity 6000.4.2f1, udit v0.9.0. 중급 노트북에서는 보통 2~4배 느림.
+
+재현 방법 및 전체 결과는 [ROADMAP Decision Log — 2026-04-15 (Sprint 3 C1)](./docs/ROADMAP.md#decision-log) 참고.
+
 ## MCP와 비교
 
 | | MCP | udit |

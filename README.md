@@ -1171,6 +1171,30 @@ udit --port 8591 editor play
 udit editor play
 ```
 
+## Performance
+
+Measured on a 10,010 GameObject scene (10 root × 1,000 children) inside a real idle-game project (~10,762 assets). Times are wall-clock (CLI + HTTP + Unity round-trip), N=3 runs.
+
+| Query | ms (avg) | Payload | Notes |
+|---|---:|---:|---|
+| `scene tree` (full depth) | ~550 | 2.0 MB | Full hierarchy + components JSON |
+| `go find --name "Bench*"` | ~760 | 194 KB | 10,010 matches, page size 1,000 |
+| `go find --component Transform` | ~730 | 194 KB | 10,015 matches, page size 1,000 |
+| `go inspect <id>` | ~450 | 0.9 KB | Single GO, full component dump |
+| `component get <id> Transform` | ~450 | 0.6 KB | Single field family |
+| `asset references <path>` | ~960 | 0.4 KB | Full project scan (10,762 assets, Unity has no reverse index) |
+| `asset dependencies <path>` | ~440 | 0.1 KB | Direct deps only |
+
+**Takeaways**
+
+- All common queries return in under ~1 s on a 10k GO scene. Fast enough for interactive agent workflows.
+- Cold/warm runs differ little — Unity recomputes on the main thread each call; the CLI doesn't cache.
+- `asset references` scans the whole project because Unity exposes no reverse-dependency index. The response includes `scan_ms` and `scanned_assets` so an agent can budget it.
+- `scene tree` payload scales linearly with GO count. Use `--depth N` to cap the tree when you don't need the whole hierarchy.
+- Benchmark machine: Intel Core Ultra 7 265KF / 64 GB / Windows 11 Pro, Unity 6000.4.2f1, udit v0.9.0. Mid-range laptops are typically 2–4× slower.
+
+Reproducer and full results in [ROADMAP Decision Log — 2026-04-15 (Sprint 3 C1)](./docs/ROADMAP.md#decision-log).
+
 ## Compared to MCP
 
 | | MCP | udit |
