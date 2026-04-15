@@ -11,3 +11,6 @@ linters:
         - (io.Closer).Close
         - (*net/http.Response).Body.Close
         - (*os.File).Close
+        # CloseHandle failure is not actionable — we're already exiting the
+        # scope (`defer`) and the handle is about to be unreachable anyway.
+        - syscall.CloseHandle

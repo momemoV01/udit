@@ -188,7 +188,7 @@ func assetCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		// next, and the remaining positionals are label names. This mirrors
 		// the ROADMAP grammar and keeps the common path-then-op pair
 		// together for agent readability.
-		if len(positional) < 2 && !(len(positional) >= 1 && positional[0] == "list") {
+		if len(positional) < 2 && (len(positional) < 1 || positional[0] != "list") {
 			return nil, fmt.Errorf("usage: udit asset label <add|remove|list|set|clear> <path> [labels...]")
 		}
 		labelOp := positional[0]
