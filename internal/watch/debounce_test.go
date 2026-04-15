@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -199,6 +200,12 @@ func TestDebouncer_DifferentPathsIndependent(t *testing.T) {
 }
 
 func TestDebouncer_BackslashNormalized(t *testing.T) {
+	// Windows-only: filepath.ToSlash rewrites backslashes only on Windows.
+	// On Unix, backslash is a valid filename character and must be
+	// preserved exactly.
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only: backslash is a valid Unix filename character")
+	}
 	clk := newFakeClock()
 	c := &collector{}
 	d := NewDebouncer(clk, 100*time.Millisecond, c.add, func(string) bool { return true })

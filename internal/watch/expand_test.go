@@ -2,6 +2,7 @@ package watch
 
 import (
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -212,11 +213,11 @@ func TestExpand_UnterminatedQuote(t *testing.T) {
 }
 
 func TestRelPath(t *testing.T) {
+	// Cross-OS cases only.
 	cases := []struct {
 		abs, root, want string
 	}{
 		{"/project/Assets/Foo.cs", "/project", "Assets/Foo.cs"},
-		{`C:\project\Assets\Foo.cs`, `C:\project`, "Assets/Foo.cs"},
 		{"/project/Assets/Foo.cs", "", "/project/Assets/Foo.cs"},
 		{"/outside/Foo.cs", "/project", "/outside/Foo.cs"}, // walks up → fallback to abs
 	}
@@ -224,6 +225,18 @@ func TestRelPath(t *testing.T) {
 		if got := relPath(c.abs, c.root); got != c.want {
 			t.Errorf("relPath(%q, %q) = %q, want %q", c.abs, c.root, got, c.want)
 		}
+	}
+}
+
+func TestRelPath_WindowsPaths(t *testing.T) {
+	// filepath.Rel on Unix cannot compute a relative path between a
+	// backslash-style Windows absolute path and a Windows root; this
+	// exercise is meaningful only under GOOS=windows.
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only: backslash paths are not absolute on Unix")
+	}
+	if got := relPath(`C:\project\Assets\Foo.cs`, `C:\project`); got != "Assets/Foo.cs" {
+		t.Errorf(`relPath(C:\project\Assets\Foo.cs, C:\project) = %q, want "Assets/Foo.cs"`, got)
 	}
 }
 

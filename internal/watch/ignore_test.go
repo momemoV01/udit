@@ -1,6 +1,9 @@
 package watch
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestIgnorer_UnityDefaults(t *testing.T) {
 	ig := NewIgnorer(nil, true, false)
@@ -77,7 +80,12 @@ func TestIgnorer_CaseSensitive(t *testing.T) {
 }
 
 func TestIgnorer_BackslashPathNormalized(t *testing.T) {
-	// fsnotify on Windows returns backslash paths. Match normalizes.
+	// Windows-only: fsnotify on Windows returns backslash paths, and
+	// filepath.ToSlash maps them to forward. On Unix the backslash is a
+	// valid filename character and must NOT be rewritten.
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only: backslash is a valid Unix filename character")
+	}
 	ig := NewIgnorer(nil, true, false)
 	if !ig.Match(`Library\ScriptAssemblies\Foo.dll`) {
 		t.Errorf("backslash Library path not matched")

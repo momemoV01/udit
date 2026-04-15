@@ -1,6 +1,9 @@
 package watch
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestMatcher_BasicMatches(t *testing.T) {
 	hooks := []Hook{
@@ -62,9 +65,14 @@ func TestMatcher_MultipleHooksOnOneFile(t *testing.T) {
 }
 
 func TestMatcher_BackslashInput(t *testing.T) {
+	// Windows-only: filepath.ToSlash maps backslashes to forward only on
+	// Windows. On Unix, backslash is a valid filename character and the
+	// matcher must preserve it (don't silently rewrite user data).
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only: backslash is a valid Unix filename character")
+	}
 	hooks := []Hook{{Name: "cs", Paths: []string{"Assets/**/*.cs"}, Run: "x"}}
 	m := NewMatcher(hooks, false)
-	// Windows fsnotify emits backslash paths; matcher must normalize.
 	if len(m.Match(`Assets\Scripts\Foo.cs`)) != 1 {
 		t.Errorf("backslash input should match after ToSlash")
 	}
