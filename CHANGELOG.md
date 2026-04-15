@@ -4,6 +4,36 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-16
+
+### Added
+
+- `udit completion install` / `udit completion uninstall` — persist tab
+  completion into the user's shell rc without manual `source <(…)`
+  hand-editing. Auto-detects the shell from `$SHELL` (or defaults to
+  PowerShell on Windows); explicit `--shell <bash|zsh|fish|powershell>`
+  overrides. Idempotent — re-running replaces the block bracketed by
+  the existing `# >>> udit completion >>>` / `# <<< udit completion <<<`
+  markers, leaves a `.bak` of the prior file content, and uses
+  temp-file + atomic rename so a partial write can't corrupt the rc.
+  fish lands as a standalone file in `~/.config/fish/completions/`;
+  every other shell appends a `source <(udit completion <shell>)`
+  block in the conventional rc location.
+- `install.sh` and `install.ps1` invoke `udit completion install`
+  automatically right after placing the binary, so a fresh install
+  gets working tab completion without a second step. Skip with
+  `--no-completion` or `UDIT_NO_COMPLETION=1` when you want to wire
+  it up by hand or not at all.
+- `udit completion --help` topic page documenting subcommands, file
+  locations per shell, and the safety guarantees.
+
+### Changed
+
+- README's *Shell completion* section (en + ko) drops the manual
+  sed/PowerShell trickery that used to be the recommended way to
+  re-install; one `udit completion install` does the same thing
+  without risking a malformed rc file.
+
 ## [0.9.1] - 2026-04-16
 
 Pre-public security hardening. No functional changes — this is a

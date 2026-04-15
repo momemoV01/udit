@@ -951,39 +951,25 @@ watch:
 
 ### 셸 자동완성
 
+`install.sh` / `install.ps1` 가 자동으로 등록합니다. 설치 후 새 셸을 열면 `udit <Tab>` 으로 명령 자동완성이 동작합니다.
+
+`go install` 이나 직접 다운로드로 설치한 경우 한 번만 실행:
+
 ```bash
-# Bash   (세션)       : source <(udit completion bash)
-# Zsh    (세션)       : source <(udit completion zsh)
-# PowerShell          : udit completion powershell | Out-String | Invoke-Expression
-# Fish                : udit completion fish > ~/.config/fish/completions/udit.fish
+udit completion install                 # 셸 자동 감지 (bash/zsh/fish/powershell)
+udit completion install --shell zsh     # 명시적으로 지정
+udit completion uninstall               # 제거
 ```
 
-각 completion 스크립트는 sentinel 주석으로 감싸져 있습니다:
-```
-# >>> udit completion >>>
-...
-# <<< udit completion <<<
-```
+해당하는 rc 파일 (`~/.bashrc`, `~/.zshrc`, `$PROFILE` 등) 을 편집하거나 — fish 의 경우 — `~/.config/fish/completions/udit.fish` 에 작성합니다. 블록은 `# >>> udit completion >>>` / `# <<< udit completion <<<` 마커로 감싸져 있어 재실행이 idempotent (중복 삽입 없이 교체). 변경 전 `.bak` 백업이 같은 디렉토리에 남습니다.
 
-**안전한 재설치** — `>> $PROFILE` (또는 `>> ~/.bashrc`)를 두 번 실행하면 블록이 중복 삽입되어 셸 초기화가 **깨집니다**. 반드시 이전 블록을 먼저 제거한 뒤 새로 추가하세요.
+스크립트만 출력하고 직접 처리하려면:
 
-Bash / Zsh:
 ```bash
-# 기존 udit completion 블록 제거
-sed -i '/^# >>> udit completion >>>/,/^# <<< udit completion <<</d' ~/.bashrc
-# zsh는 ~/.zshrc
-udit completion bash >> ~/.bashrc
+udit completion bash         # 또는 zsh / fish / powershell
 ```
 
-PowerShell (Windows / 크로스 플랫폼):
-```powershell
-$p = Get-Content $PROFILE -Raw
-$p = $p -replace '(?s)# >>> udit completion >>>.*?# <<< udit completion <<<\r?\n?', ''
-Set-Content $PROFILE -Value $p.TrimEnd() -Encoding utf8
-udit completion powershell | Out-File -Append -Encoding utf8 $PROFILE
-```
-
-Fish는 별도 정리 불필요 — 각 completion이 자기 파일에 있어서 `~/.config/fish/completions/udit.fish` 덮어쓰기가 항상 안전합니다.
+`install.sh` / `install.ps1` 의 자동 등록을 끄려면 `--no-completion` (또는 `UDIT_NO_COMPLETION=1`).
 
 ### 커스텀 Tool
 

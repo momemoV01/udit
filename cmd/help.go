@@ -192,9 +192,17 @@ Watch:
   watch --path <glob> --on-change <cmd>    Ad-hoc hook (no config needed)
 
 Completion:
-  completion <shell>            Print shell completion script (bash, zsh,
-                                powershell, fish). Source it or pipe to a
-                                profile/completion file.
+  completion install            Persist completion into your shell rc.
+                                install.sh / install.ps1 already runs
+                                this; explicit invocation is for users
+                                who installed via 'go install' or
+                                downloaded the binary manually.
+    --shell <s>                 bash | zsh | fish | powershell. Auto-
+                                detected from $SHELL when omitted.
+    --force                     Rewrite the marker block even if it
+                                already matches.
+  completion uninstall          Remove the udit-managed block.
+  completion <shell>            Print the completion script to stdout.
 
 Global Options:
   --port <N>          Connect to specific Unity port (skip auto-discovery)
@@ -1154,6 +1162,62 @@ Examples:
   udit watch --config ./.udit.yaml
   udit watch --no-exec           # preview without executing
   udit watch --json | tee watch.log
+`)
+	case "completion":
+		fmt.Print(`Usage: udit completion <subcommand|shell> [flags]
+
+Subcommands:
+  install [--shell <s>] [--force]
+      Persist completion into your shell's rc file (or completions/
+      directory for fish). Idempotent — re-running replaces the
+      block bracketed by ` + "`# >>> udit completion >>>`" + ` /
+      ` + "`# <<< udit completion <<<`" + `, leaving a .bak alongside.
+      install.sh / install.ps1 invoke this automatically; the
+      explicit form is for users who installed via go install or
+      downloaded the binary manually.
+
+      --shell <bash|zsh|fish|powershell>
+          Force a specific shell. When omitted, auto-detect from
+          $SHELL (Unix) or default to powershell on Windows.
+      --force
+          Rewrite the block even when its current content already
+          matches — useful after a future format tweak.
+
+  uninstall [--shell <s>]
+      Remove the udit-managed block (or the fish completions file).
+      Same shell auto-detection rules as install. .bak written
+      before any change.
+
+  print <shell>
+      Emit the completion script to stdout. Same as the bare form
+      below; the explicit name is here so future flags can hang off
+      ` + "`print`" + ` without colliding with shell names.
+
+  <shell>
+      Bare-form alias for ` + "`print`" + `. ` + "`udit completion bash`" + ` →
+      bash script on stdout. Use this when you want to source it
+      yourself or pipe to a known location.
+
+Where files land (install mode):
+  bash         ~/.bashrc        (Linux)
+               ~/.bash_profile  (macOS)
+  zsh          ~/.zshrc
+  fish         ~/.config/fish/completions/udit.fish (whole file)
+  powershell   $PROFILE         (or platform default when unset)
+
+Examples:
+  udit completion install
+  udit completion install --shell zsh --force
+  udit completion uninstall
+  udit completion bash > /tmp/udit-completion.bash
+  source <(udit completion bash)
+
+Notes:
+  - Open a new shell to pick up newly installed completion.
+  - Auto-install can be skipped during ` + "`install.sh`" + ` /
+    ` + "`install.ps1`" + ` with --no-completion or UDIT_NO_COMPLETION=1.
+  - Half-open marker (start without end) in the rc file is treated
+    as an error rather than guessing — manually clean up first.
 `)
 	case "custom-tools", "custom", "tools":
 		fmt.Print(`How to write custom tools for udit

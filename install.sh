@@ -3,6 +3,14 @@ set -e
 
 REPO="momemoV01/udit"
 
+# Optional flags: --no-completion (also via UDIT_NO_COMPLETION=1).
+NO_COMPLETION="${UDIT_NO_COMPLETION:-0}"
+for arg in "$@"; do
+  case "$arg" in
+    --no-completion) NO_COMPLETION=1 ;;
+  esac
+done
+
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$OS" in
   linux)  ;;
@@ -44,3 +52,11 @@ esac
 
 echo "Installed udit to $INSTALL_DIR/udit"
 "$INSTALL_DIR/udit" version
+
+# Auto-install shell completion. Best-effort — if it fails (unsupported
+# shell, locked-down rc file, etc.) the install itself still succeeds.
+# Skip with --no-completion or UDIT_NO_COMPLETION=1.
+if [ "$NO_COMPLETION" != "1" ]; then
+  "$INSTALL_DIR/udit" completion install || \
+    echo "Note: shell completion install skipped (run \`udit completion install --shell <bash|zsh|fish>\` later)."
+fi

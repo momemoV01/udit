@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -10,28 +12,70 @@ import (
 // handlers aren't included because completion runs without a live Unity to
 // query; static commands cover 95% of daily typing.
 
-const completionUsage = `Usage: udit completion <bash|zsh|powershell|fish>
+const completionUsage = `Usage: udit completion <subcommand|shell> [flags]
 
-Print a shell completion script. Source it (or persist to a known location)
-to enable Tab completion for udit commands and global flags.
+Subcommands:
+  install [--shell <s>] [--force]   Persist completion into your shell's
+                                    rc file (or completions/ for fish).
+                                    Idempotent — re-running replaces the
+                                    block bracketed by udit's markers.
+  uninstall [--shell <s>]           Remove the udit completion block.
+  print <shell>                     Emit the completion script to stdout
+                                    (alias: bare ` + "`udit completion <shell>`" + `).
 
-  Bash       (sourced)   : source <(udit completion bash)
-  Bash       (persisted) : udit completion bash | sudo tee /etc/bash_completion.d/udit
-  Zsh        (sourced)   : source <(udit completion zsh)
-  Zsh        (persisted) : udit completion zsh > "${fpath[1]}/_udit"
-  PowerShell             : udit completion powershell | Out-String | Invoke-Expression
-  PowerShell (persisted) : udit completion powershell >> $PROFILE
-  Fish                   : udit completion fish > ~/.config/fish/completions/udit.fish
+Shells supported: bash, zsh, powershell (or pwsh), fish.
+
+  Print to stdout (manual install):
+    source <(udit completion bash)
+    udit completion zsh  > "${fpath[1]}/_udit"
+    udit completion fish > ~/.config/fish/completions/udit.fish
+    udit completion powershell | Out-String | Invoke-Expression
+
+  Auto-install into your rc file:
+    udit completion install                 # auto-detect shell
+    udit completion install --shell zsh     # force a specific shell
+    udit completion uninstall               # remove
+
+The install/uninstall path is what install.sh and install.ps1 invoke after
+placing the binary, so a fresh install gets tab completion with no extra
+step. Pass --no-completion to either installer to skip it.
 `
 
 // completionCmd dispatches to the right shell-script generator and writes
-// to stdout so users can `source <(...)` or pipe to a file.
+// to stdout so users can `source <(...)` or pipe to a file. With "install"
+// or "uninstall" as the first arg, persists to the user's shell rc.
 func completionCmd(args []string) error {
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, completionUsage)
 		os.Exit(1)
 	}
 	switch strings.ToLower(args[0]) {
+	case "install":
+		return runCompletionInstall(args[1:])
+	case "uninstall":
+		return runCompletionUninstall(args[1:])
+	case "print":
+		// Explicit form so we can grow more flags later without colliding
+		// with shell names. `udit completion print bash` == `udit completion bash`.
+		if len(args) < 2 {
+			fmt.Fprint(os.Stderr, completionUsage)
+			os.Exit(1)
+		}
+		return printCompletionScript(args[1])
+	case "bash", "zsh", "powershell", "pwsh", "fish":
+		return printCompletionScript(args[0])
+	default:
+		fmt.Fprintf(os.Stderr, "unknown subcommand or shell: %q\n\n%s", args[0], completionUsage)
+		os.Exit(1)
+	}
+	return nil
+}
+
+// printCompletionScript writes the completion script for the named shell
+// to stdout. Returns an error only for unknown shells; the caller decides
+// the exit code.
+func printCompletionScript(shell string) error {
+	switch strings.ToLower(shell) {
 	case "bash":
 		fmt.Print(bashScript)
 	case "zsh":
@@ -41,8 +85,353 @@ func completionCmd(args []string) error {
 	case "fish":
 		fmt.Print(fishScript)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown shell: %q\n\n%s", args[0], completionUsage)
+		fmt.Fprintf(os.Stderr, "unknown shell: %q\n\n%s", shell, completionUsage)
 		os.Exit(1)
+	}
+	return nil
+}
+
+// ----------------------------------------------------------------------
+// install / uninstall
+// ----------------------------------------------------------------------
+
+// completionMarkerStart and completionMarkerEnd bracket the udit-managed
+// region inside any rc file we touch. They match the markers already
+// embedded in the printed scripts, so a user who hand-pasted earlier
+// still gets a clean re-install.
+const (
+	completionMarkerStart = "# >>> udit completion >>>"
+	completionMarkerEnd   = "# <<< udit completion <<<"
+)
+
+// completionInstallTarget describes what install does for one shell.
+//
+//	rcPath    — file we modify (or replace, in fish's case).
+//	mode      — "block" wraps a `source <(udit completion …)` line in our
+//	            markers and inserts/replaces between them in rcPath.
+//	          — "file"  writes the full completion script as the file
+//	            content (fish, where rc-style sourcing is the wrong shape).
+type completionInstallTarget struct {
+	shell  string
+	rcPath string
+	mode   string // "block" | "file"
+}
+
+// resolveCompletionTarget figures out where the completion goes for a
+// given shell. Shell can be "" to autodetect.
+func resolveCompletionTarget(shell string) (completionInstallTarget, error) {
+	if shell == "" {
+		shell = detectShell()
+		if shell == "" {
+			return completionInstallTarget{}, fmt.Errorf("could not auto-detect shell — pass --shell <bash|zsh|powershell|fish>")
+		}
+	}
+	shell = strings.ToLower(shell)
+	if shell == "pwsh" {
+		shell = "powershell"
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return completionInstallTarget{}, fmt.Errorf("user home dir: %w", err)
+	}
+
+	switch shell {
+	case "bash":
+		// macOS interactive bash sources ~/.bash_profile, not ~/.bashrc.
+		// Linux + WSL go to ~/.bashrc. Pick the conventional spot per OS.
+		if runtime.GOOS == "darwin" {
+			return completionInstallTarget{shell: "bash", rcPath: filepath.Join(home, ".bash_profile"), mode: "block"}, nil
+		}
+		return completionInstallTarget{shell: "bash", rcPath: filepath.Join(home, ".bashrc"), mode: "block"}, nil
+	case "zsh":
+		return completionInstallTarget{shell: "zsh", rcPath: filepath.Join(home, ".zshrc"), mode: "block"}, nil
+	case "fish":
+		return completionInstallTarget{shell: "fish", rcPath: filepath.Join(home, ".config", "fish", "completions", "udit.fish"), mode: "file"}, nil
+	case "powershell":
+		// Honor $PROFILE when present (PowerShell sets it). Fall back to
+		// the documented default location for the current platform.
+		if p := os.Getenv("PROFILE"); p != "" {
+			return completionInstallTarget{shell: "powershell", rcPath: p, mode: "block"}, nil
+		}
+		var p string
+		if runtime.GOOS == "windows" {
+			docs := os.Getenv("USERPROFILE")
+			if docs == "" {
+				docs = home
+			}
+			p = filepath.Join(docs, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+		} else {
+			p = filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
+		}
+		return completionInstallTarget{shell: "powershell", rcPath: p, mode: "block"}, nil
+	default:
+		return completionInstallTarget{}, fmt.Errorf("unsupported shell %q (expected bash, zsh, powershell, or fish)", shell)
+	}
+}
+
+// detectShell guesses the active shell from $SHELL (Unix) or platform
+// defaults. Returns "" when it can't decide.
+func detectShell() string {
+	if s := os.Getenv("SHELL"); s != "" {
+		base := filepath.Base(s)
+		switch base {
+		case "bash", "zsh", "fish":
+			return base
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return "powershell"
+	}
+	// Unix without $SHELL set is unusual but possible (e.g. cron, CI).
+	// Refuse to guess rather than write to the wrong file.
+	return ""
+}
+
+// completionBlockBody returns the content that lives between the markers
+// for "block"-mode shells.
+func completionBlockBody(shell string) string {
+	switch shell {
+	case "bash":
+		return "source <(udit completion bash)"
+	case "zsh":
+		return "source <(udit completion zsh)"
+	case "powershell":
+		return "udit completion powershell | Out-String | Invoke-Expression"
+	}
+	return ""
+}
+
+// completionFileContents returns the full file body for "file"-mode
+// shells (currently only fish — the printed script is also the
+// completion file).
+func completionFileContents(shell string) string {
+	if shell == "fish" {
+		return fishScript
+	}
+	return ""
+}
+
+// runCompletionInstall persists completion for the requested (or
+// auto-detected) shell. Idempotent: re-running replaces the marker
+// block. Writes a .bak alongside before changing block-mode files.
+func runCompletionInstall(args []string) error {
+	shell, force := parseCompletionFlags(args)
+	tgt, err := resolveCompletionTarget(shell)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(tgt.rcPath), 0o755); err != nil {
+		return fmt.Errorf("create %s: %w", filepath.Dir(tgt.rcPath), err)
+	}
+
+	switch tgt.mode {
+	case "block":
+		body := completionBlockBody(tgt.shell)
+		changed, action, err := upsertMarkerBlock(tgt.rcPath, body, force)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			fmt.Printf("Completion already up to date for %s (%s)\n", tgt.shell, tgt.rcPath)
+			return nil
+		}
+		fmt.Printf("Completion %s for %s → %s\n", action, tgt.shell, tgt.rcPath)
+		fmt.Println("Open a new shell or `source` the file to activate.")
+		return nil
+	case "file":
+		body := completionFileContents(tgt.shell)
+		if body == "" {
+			return fmt.Errorf("internal: no file contents for shell %q", tgt.shell)
+		}
+		if err := writeFileWithBackup(tgt.rcPath, []byte(body)); err != nil {
+			return err
+		}
+		fmt.Printf("Completion installed for %s → %s\n", tgt.shell, tgt.rcPath)
+		fmt.Println("Open a new shell to activate.")
+		return nil
+	}
+	return fmt.Errorf("internal: unknown install mode %q", tgt.mode)
+}
+
+// runCompletionUninstall removes the marker block (block mode) or the
+// file (file mode) for the given shell.
+func runCompletionUninstall(args []string) error {
+	shell, _ := parseCompletionFlags(args)
+	tgt, err := resolveCompletionTarget(shell)
+	if err != nil {
+		return err
+	}
+
+	switch tgt.mode {
+	case "block":
+		removed, err := removeMarkerBlock(tgt.rcPath)
+		if err != nil {
+			return err
+		}
+		if !removed {
+			fmt.Printf("No udit completion block found in %s\n", tgt.rcPath)
+			return nil
+		}
+		fmt.Printf("Completion removed from %s\n", tgt.rcPath)
+		return nil
+	case "file":
+		if _, err := os.Stat(tgt.rcPath); os.IsNotExist(err) {
+			fmt.Printf("No completion file at %s\n", tgt.rcPath)
+			return nil
+		}
+		if err := os.Remove(tgt.rcPath); err != nil {
+			return fmt.Errorf("remove %s: %w", tgt.rcPath, err)
+		}
+		fmt.Printf("Completion file removed: %s\n", tgt.rcPath)
+		return nil
+	}
+	return fmt.Errorf("internal: unknown install mode %q", tgt.mode)
+}
+
+// parseCompletionFlags pulls --shell / --force out of args. Anything else
+// is silently ignored — the surface is small enough that we don't need a
+// full flag.FlagSet.
+func parseCompletionFlags(args []string) (shell string, force bool) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--shell", "-s":
+			if i+1 < len(args) {
+				shell = args[i+1]
+				i++
+			}
+		case "--force", "-f":
+			force = true
+		}
+	}
+	return
+}
+
+// ----------------------------------------------------------------------
+// Marker block file editing
+// ----------------------------------------------------------------------
+
+// upsertMarkerBlock makes sure rcPath contains exactly one marker-wrapped
+// block whose body is the supplied line. Returns (changed, action, err)
+// where action is "installed" or "updated" — useful for the user-visible
+// log line. Writes a .bak when it changes anything.
+//
+// The `force` arg currently only affects the "no change needed" decision:
+// when true, we rewrite the block even if it matches byte-for-byte. Useful
+// for refreshing the body after a future format tweak.
+func upsertMarkerBlock(rcPath, bodyLine string, force bool) (bool, string, error) {
+	existing, err := os.ReadFile(rcPath)
+	if err != nil && !os.IsNotExist(err) {
+		return false, "", fmt.Errorf("read %s: %w", rcPath, err)
+	}
+	current := string(existing)
+
+	wantBlock := completionMarkerStart + "\n" + bodyLine + "\n" + completionMarkerEnd
+
+	startIdx := strings.Index(current, completionMarkerStart)
+	if startIdx >= 0 {
+		endIdx := strings.Index(current[startIdx:], completionMarkerEnd)
+		if endIdx < 0 {
+			// Half-open marker — refuse rather than corrupting the file.
+			return false, "", fmt.Errorf("%s contains a `%s` line without a matching `%s` — bailing out to avoid corrupting the file",
+				rcPath, completionMarkerStart, completionMarkerEnd)
+		}
+		blockEnd := startIdx + endIdx + len(completionMarkerEnd)
+		oldBlock := current[startIdx:blockEnd]
+		if !force && oldBlock == wantBlock {
+			return false, "", nil
+		}
+		updated := current[:startIdx] + wantBlock + current[blockEnd:]
+		if err := writeFileWithBackup(rcPath, []byte(updated)); err != nil {
+			return false, "", err
+		}
+		return true, "updated", nil
+	}
+
+	// No existing block — append, with a leading newline if the file
+	// doesn't already end with one (rc files often do, but not always).
+	var b strings.Builder
+	b.WriteString(current)
+	if len(current) > 0 && !strings.HasSuffix(current, "\n") {
+		b.WriteByte('\n')
+	}
+	if len(current) > 0 {
+		b.WriteByte('\n')
+	}
+	b.WriteString(wantBlock)
+	b.WriteByte('\n')
+	if err := writeFileWithBackup(rcPath, []byte(b.String())); err != nil {
+		return false, "", err
+	}
+	return true, "installed", nil
+}
+
+// removeMarkerBlock strips the udit-managed region from rcPath. Returns
+// (removed, err) — false when no block was found (and the file is left
+// alone). Writes a .bak when it changes anything.
+func removeMarkerBlock(rcPath string) (bool, error) {
+	existing, err := os.ReadFile(rcPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read %s: %w", rcPath, err)
+	}
+	current := string(existing)
+
+	startIdx := strings.Index(current, completionMarkerStart)
+	if startIdx < 0 {
+		return false, nil
+	}
+	endIdx := strings.Index(current[startIdx:], completionMarkerEnd)
+	if endIdx < 0 {
+		return false, fmt.Errorf("%s contains a `%s` line without a matching `%s` — leaving alone",
+			rcPath, completionMarkerStart, completionMarkerEnd)
+	}
+	blockEnd := startIdx + endIdx + len(completionMarkerEnd)
+
+	// Eat the trailing newline so we don't leave a blank line behind.
+	if blockEnd < len(current) && current[blockEnd] == '\n' {
+		blockEnd++
+	}
+	// Eat one leading blank line too, when we added one in install.
+	stripStart := startIdx
+	if stripStart > 0 && current[stripStart-1] == '\n' {
+		// One newline ends the previous content; if there's another
+		// blank line right before our marker, drop it too.
+		if stripStart >= 2 && current[stripStart-2] == '\n' {
+			stripStart--
+		}
+	}
+
+	updated := current[:stripStart] + current[blockEnd:]
+	if err := writeFileWithBackup(rcPath, []byte(updated)); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// writeFileWithBackup atomically replaces path with data, leaving a
+// .bak of the prior content next to it (when there was prior content).
+// The temp+rename pattern means a partial write can't corrupt the rc
+// file: either the new bytes are fully there, or the old file is.
+func writeFileWithBackup(path string, data []byte) error {
+	if existing, err := os.ReadFile(path); err == nil {
+		if err := os.WriteFile(path+".bak", existing, 0o644); err != nil {
+			return fmt.Errorf("backup %s: %w", path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read %s before backup: %w", path, err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename %s -> %s: %w", tmp, path, err)
 	}
 	return nil
 }

@@ -987,42 +987,25 @@ Built-in Unity ignores (appended to user `ignore:` unless `defaults_ignore: fals
 
 ### Shell completion
 
+The install scripts (`install.sh` and `install.ps1`) wire up tab completion automatically. Open a new shell after install and `udit <Tab>` lists the commands.
+
+If you installed via `go install` or downloaded the binary manually, run it once yourself:
+
 ```bash
-# Bash   (sourced)   : source <(udit completion bash)
-# Zsh    (sourced)   : source <(udit completion zsh)
-# PowerShell         : udit completion powershell | Out-String | Invoke-Expression
-# Fish               : udit completion fish > ~/.config/fish/completions/udit.fish
+udit completion install                 # auto-detect bash / zsh / fish / powershell
+udit completion install --shell zsh     # force a specific shell
+udit completion uninstall               # remove
 ```
 
-Each completion script is wrapped in sentinel comments:
-```
-# >>> udit completion >>>
-...
-# <<< udit completion <<<
-```
+The installer edits the appropriate rc file (`~/.bashrc`, `~/.zshrc`, `$PROFILE`, …) or — for fish — writes `~/.config/fish/completions/udit.fish`. The block is bracketed by `# >>> udit completion >>>` / `# <<< udit completion <<<` markers so re-running is idempotent: the existing block is replaced rather than duplicated. A `.bak` of the prior file content is left next to it.
 
-**Safe re-install** — running `>> $PROFILE` (or `>> ~/.bashrc`) a second time
-will duplicate the block and break the shell init. Remove the previous block
-first, then append fresh.
+Want the script without modifying anything? Print it to stdout:
 
-Bash / Zsh:
 ```bash
-# Strip any previous udit completion block
-sed -i '/^# >>> udit completion >>>/,/^# <<< udit completion <<</d' ~/.bashrc
-# Or for zsh: ~/.zshrc
-udit completion bash >> ~/.bashrc
+udit completion bash         # or zsh / fish / powershell
 ```
 
-PowerShell (Windows / cross-platform):
-```powershell
-$p = Get-Content $PROFILE -Raw
-$p = $p -replace '(?s)# >>> udit completion >>>.*?# <<< udit completion <<<\r?\n?', ''
-Set-Content $PROFILE -Value $p.TrimEnd() -Encoding utf8
-udit completion powershell | Out-File -Append -Encoding utf8 $PROFILE
-```
-
-Fish needs no cleanup — each completion lives in its own file, so overwriting
-`~/.config/fish/completions/udit.fish` is always safe.
+Skip auto-install during `install.sh` / `install.ps1` with `--no-completion` (or `UDIT_NO_COMPLETION=1`).
 
 ### Custom Tools
 
