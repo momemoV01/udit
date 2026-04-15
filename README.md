@@ -1195,6 +1195,20 @@ Measured on a 10,010 GameObject scene (10 root × 1,000 children) inside a real 
 
 Reproducer and full results in [ROADMAP Decision Log — 2026-04-15 (Sprint 3 C1)](./docs/ROADMAP.md#decision-log).
 
+## Security & Trust Model
+
+udit's security model is "trusted local user with the Editor open". If that's not true for your setup, read this section before installing.
+
+**Transport.** The Connector binds to `127.0.0.1` only and rejects any request carrying an `Origin` header, so a malicious webpage can't reach it from the browser. Anything running as your OS user on the same machine *can* — that's intentional; the CLI is one of those processes.
+
+**Arbitrary code execution is a feature.** `udit exec "<C# code>"` compiles and runs the code inside the Editor, with the Editor's full process privileges — filesystem, network, everything Unity can reach. Same with `udit menu` (any Editor menu item) and `udit run` (arbitrary shell step lists from `.udit.yaml`). Don't pipe untrusted strings into these. Don't pull a `.udit.yaml` from a source you don't control and run `udit run <task>` blindly — treat it like `make` or `npm run`.
+
+**Update channel.** `udit update` and the install scripts download binaries from `github.com/momemoV01/udit/releases` over HTTPS. Trust is GitHub-level: if the release is signed into the repo by the maintainer, the binary is legitimate. No codesigning on the binaries themselves (yet); on macOS you'll need to allow the unsigned binary manually.
+
+**What we don't protect against.** Shared dev machines where another user can hit `127.0.0.1:8590`; supply-chain compromise of Unity packages or Go modules; a malicious `.udit.yaml` committed by a teammate. The last one is a normal code-review concern — diff the yaml like you diff a Makefile.
+
+**Reporting vulnerabilities.** Open a [GitHub Security Advisory](https://github.com/momemoV01/udit/security/advisories/new) for non-trivial issues; a regular issue is fine for anything already public.
+
 ## Compared to MCP
 
 | | MCP | udit |

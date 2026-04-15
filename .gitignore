@@ -1,7 +1,28 @@
+# Built artifacts
 udit
 *.exe
+coverage.out
+
+# Environment files
 .env
+.env.local
+.env.*.local
+
+# Secrets / credentials — common accidental-commit patterns
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials.*
+secrets/
+.secrets/
+
+# Package manager tokens
+.npmrc
+.npmrc.local
+
+# OS / editor
 .DS_Store
 .vscode/
 .idea/
-coverage.out

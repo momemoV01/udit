@@ -1,0 +1,23 @@
+version: 2
+
+# Dependabot keeps our supply chain fresh so we don't have to pin third-
+# party GitHub Actions by commit SHA. Both the Go modules and the
+# workflow `uses:` references get a PR when a newer version lands.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"

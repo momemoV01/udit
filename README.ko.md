@@ -1180,6 +1180,20 @@ udit editor play
 
 재현 방법 및 전체 결과는 [ROADMAP Decision Log — 2026-04-15 (Sprint 3 C1)](./docs/ROADMAP.md#decision-log) 참고.
 
+## 보안 & 신뢰 모델
+
+udit의 보안 모델은 "에디터를 연 로컬 사용자를 신뢰한다" 입니다. 이 전제가 맞지 않는 환경이라면 설치 전 이 섹션을 먼저 읽으세요.
+
+**전송 경로.** Connector는 `127.0.0.1`에만 바인딩되고, `Origin` 헤더가 있는 요청은 거부합니다 — 브라우저의 악성 페이지가 도달 못 합니다. 같은 머신의 같은 OS 계정으로 실행되는 프로세스는 *도달 가능* 합니다. 이건 의도한 것이고, CLI 자체가 그 프로세스 중 하나입니다.
+
+**임의 코드 실행은 기능입니다.** `udit exec "<C# 코드>"` 는 에디터 안에서 그 코드를 컴파일 + 실행하며 **에디터 프로세스 권한 전체** (파일시스템, 네트워크, Unity가 접근할 수 있는 모든 것)로 돌아갑니다. `udit menu` (모든 에디터 메뉴 항목), `udit run` (`.udit.yaml`의 임의 shell step 리스트)도 마찬가지입니다. 신뢰되지 않은 문자열을 이쪽에 파이프하지 마세요. 출처를 모르는 `.udit.yaml`을 받아서 `udit run <task>`를 맹목적으로 돌리지 마세요 — `make` 나 `npm run` 과 같은 신뢰 모델로 취급하세요.
+
+**업데이트 채널.** `udit update` 와 설치 스크립트는 `github.com/momemoV01/udit/releases` 에서 HTTPS로 바이너리를 받습니다. 신뢰는 GitHub 레벨 — 릴리스가 메인테이너가 올린 것이면 바이너리는 정품입니다. 바이너리 자체 코드서명은 (아직) 없습니다; macOS에선 미서명 바이너리 허용을 수동으로 해줘야 합니다.
+
+**우리가 방어하지 않는 것.** 다른 사용자가 `127.0.0.1:8590`을 칠 수 있는 공유 개발 머신; Unity 패키지 / Go 모듈의 supply-chain 침해; 팀원이 커밋한 악의적 `.udit.yaml`. 마지막 건 일반 코드 리뷰 수준 — Makefile을 diff하듯이 yaml도 diff 하세요.
+
+**취약점 신고.** 중요한 이슈는 [GitHub Security Advisory](https://github.com/momemoV01/udit/security/advisories/new)로 열어주세요; 이미 공개된 내용이면 일반 issue도 괜찮습니다.
+
 ## MCP와 비교
 
 | | MCP | udit |
