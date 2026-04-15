@@ -4,6 +4,42 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-04-15
+
+Closes the first-use UX gap in v0.6.0: `udit watch` requires a
+`.udit.yaml`, but until now agents had to hand-write one from the help
+text. Ships `udit init` — a tiny `git init` / `npm init`-style scaffold
+for udit's own config, parallel to the existing surface for generating
+Unity assets (`go create`, `component add`, `asset create`, `prefab
+instantiate`).
+
+No connector bump — CLI-only.
+
+### Added
+
+**`init` command — scaffold `.udit.yaml`.**
+
+```bash
+udit init                      # minimal scaffold with commented-out sections
+udit init --watch              # + a watch: section with compile_cs + reserialize_yaml hooks
+udit init --output ./my.yaml
+udit init --force --watch      # overwrite an existing config
+```
+
+The minimal template is a documented starting point: commented globals
+(`default_port`, `default_timeout_ms`, `exec.usings`) and a commented
+watch stub so users can see the shape before uncommenting. `--watch`
+flips the watch section from comment to concrete — two hooks (`refresh
+--compile` on `Assets/**/*.cs`, `reserialize $RELFILE` on
+`Assets/**/*.{prefab,unity,asset}`) that run against any Unity project
+without edits.
+
+- `cmd/init.go` — new subcommand + scaffoldTemplate() + help text.
+- `cmd/root.go` — dispatch + overview + topic help.
+- `cmd/init_test.go` — minimal scaffold parses, `--watch` scaffold
+  validates against `watch.Validate()`, `--force` required for
+  overwrite, default `--output` lands in cwd.
+
 ## [0.6.0] - 2026-04-15
 
 Opens Phase 5 (Stream). A single deliverable: `udit watch` — a

@@ -75,6 +75,8 @@ func Execute() error {
 		return updateCmd(subArgs)
 	case "completion":
 		return completionCmd(subArgs)
+	case "init":
+		return initCmd(subArgs)
 	case "watch":
 		// watch is a long-running command that doesn't require Unity to
 		// be alive at startup — hooks may run when Unity is off (e.g.
@@ -545,6 +547,12 @@ Status:
 Update:
   update                        Update to the latest version
   update --check                Check for updates without installing
+
+Config:
+  init                          Scaffold a .udit.yaml in the current directory
+  init --watch                  ... with a watch: section containing sample hooks
+  init --force                  Overwrite an existing file
+  init --output <path>          Write to a specific path
 
 Watch:
   watch                         Run hooks from .udit.yaml on file changes
@@ -1396,6 +1404,8 @@ Examples:
   udit update
   udit update --check
 `)
+	case "init":
+		fmt.Print(initHelp())
 	case "watch":
 		fmt.Print(`Usage: udit watch [options]
 

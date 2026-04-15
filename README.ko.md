@@ -721,6 +721,19 @@ Unity Test Framework 패키지 필요. PlayMode 테스트는 도메인 리로드
 udit list
 ```
 
+### 프로젝트 스캐폴드 (v0.6.1+)
+
+`udit init`은 현재 디렉토리에 `.udit.yaml` 스캐폴드를 떨어뜨립니다. 모든 필드가 주석 처리된 최소 템플릿 — `udit watch`, `udit exec`, `udit --port`가 이미 읽는 형식 그대로.
+
+```bash
+udit init                     # 최소 스캐폴드 (watch 섹션 주석 처리)
+udit init --watch             # watch 섹션 예제 hook 포함
+udit init --output ./.udit.yaml
+udit init --force --watch     # 기존 파일 덮어쓰고 watch 예제로 교체
+```
+
+`--watch` 옵션은 샘플 hook 두 개 (`compile_cs`, `reserialize_yaml`)를 포함해 Unity 프로젝트에서 그대로 동작 — 필요에 맞게 `paths:` 리스트만 손보면 됩니다.
+
 ### Watch (v0.6.0+)
 
 `udit watch`는 `.udit.yaml`에 정의된 후크를 파일 변경 시점에 자동 실행하는 장기 실행 워처입니다. LLM 호출 없이 에디터 루프 안에서 동작하는 로컬 CI 스타일 자동화.

@@ -721,6 +721,23 @@ Requires the Unity Test Framework package. PlayMode tests trigger a domain reloa
 udit list
 ```
 
+### Project scaffold (v0.6.1+)
+
+`udit init` drops a `.udit.yaml` scaffold into the current directory with
+commented-out placeholders for every field — the same file format `udit
+watch`, `udit exec`, and `udit --port` already read.
+
+```bash
+udit init                     # minimal scaffold (watch section commented out)
+udit init --watch             # also include a ready-to-run watch: section
+udit init --output ./.udit.yaml
+udit init --force --watch     # overwrite an existing config with the watch example
+```
+
+The `--watch` variant ships two sample hooks (`compile_cs` and
+`reserialize_yaml`) that work as-is in any Unity project — edit the
+`paths:` list to scope them.
+
 ### Watch (v0.6.0+)
 
 `udit watch` is a long-running file-system watcher that runs pre-defined

@@ -797,6 +797,7 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | `$FILE` per-file, `$FILES` batch+env — per-token 정책 | 대안 1: `$FILE`=first-in-batch 후 나머지 drop (plan agent는 "silent data loss footgun" 지적). 대안 2: 항상 파일별 1회 (save-all 100개 → 100회 호출 낭비). 채택: run 문자열에 $FILE/$RELFILE 있으면 파일별 fan-out, $FILES/$RELFILES 있으면 1회 호출 + env var. 둘 다 쓰면 config load error. Agent 의도를 문법으로 강제 — 실수로 데이터 누락 불가. `$RELFILE`은 Unity가 원하는 `Assets/...` 형태 (reserialize 등 passthrough 명령과 자연스럽게 결합) |
 | 2026-04-15 | .meta 파일은 sibling 기준으로 collapse (debouncer에서) | Unity는 asset 저장 후 `.meta` 파일을 별도로 씀 (labels, importer settings 등 변경 시). 단순히 fsnotify 이벤트를 통과시키면 `Foo.cs` + `Foo.cs.meta` 두 개 이벤트 → 한 번의 save에 hook 2회 발동. Debouncer에서 `.meta` suffix 감지, sibling이 pending이면 drop, sibling이 디스크에 존재하면 sibling path로 write 이벤트, 없으면 (= orphan meta = 삭제 신호) sibling path로 remove 이벤트. Unity 워크플로 지식이 필요한 노이즈 제거 — 쓰는 사람(agent)이 `.meta`를 직접 처리 안 해도 됨 |
 | 2026-04-15 | Circuit breaker 10-fires-in-10s (hook disable, process 재시작에만 reset) | 자기-트리거 루프가 watch의 가장 큰 footgun. Hook이 자기 glob에 매치되는 경로를 쓰면 fire→write→fire 무한. 문서로만 대응하면 첫 사용자가 즉시 당함. 10회/10초 감지 시 해당 hook만 disable + 명시적 log + ignore 가이드. Process 재시작 전까지 자동 re-enable 안 함 — 재시작 = 사용자가 config 고쳤다는 신호. 오탐 리스크: hook이 정당하게 자주 돌아야 하는 케이스에는 `max_parallel` 대신 hook-level `debounce` override 사용 권장. 10/10s는 전형적인 dev-loop 대비 충분히 보수적 |
+| 2026-04-15 | `udit init` — config도 CLI로 생성 (대칭성 회복, v0.6.1) | 관찰: udit은 prefab/go/component/asset/scene 같은 Unity 리소스는 CLI로 만들게 해놓고 정작 자기 설정 파일 `.udit.yaml`은 사용자가 손으로 쓰게 방치. Phase 1.4 때 필드 3개라 scaffold가 과하게 느껴졌으나 v0.6.0에서 `watch:` 섹션이 붙으면서 첫 사용 UX가 급격히 나빠짐 — `udit watch` 실행 → "no .udit.yaml found" 에러 → README 긴 스키마 읽고 손으로 작성. git init / npm init / go mod init 패턴 차용. `--watch`로 샘플 hook 2개 (compile_cs + reserialize_yaml) 포함 버전. 공식 도구가 생성하는 yaml이 곧 reference 예시 역할 — 문서와 코드가 drift할 여지 감소. `udit config show/validate/path/edit` namespace는 차기 patch로 분리 — init만으로도 가장 큰 gap 해소 |
 
 ---
 
@@ -837,7 +838,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] Phase 4c 착수 — `build player/targets/addressables/cancel` (2026-04-15, Connector bump 보류, v0.5.0과 함께 0.7.0)
 - [x] **v0.5.0 태그 push + Release 검증** (2026-04-15) — Connector 0.7.0, Phase 4 (Automate) 전체 완성
 - [x] Phase 5.1 착수 — `watch` (fsnotify + .udit.yaml hooks + 서킷 브레이커 + .meta collapse) (2026-04-15)
-- [ ] **v0.6.0 태그 push + Release 검증** — Phase 5.1 완성 (watch만; 5.2 log tail은 별도 릴리스)
+- [x] **v0.6.0 태그 push + Release 검증** (2026-04-15) — Phase 5.1 완성 (watch만; 5.2 log tail은 별도 릴리스)
+- [x] v0.6.1 patch — `udit init` scaffold (watch UX gap 해소) (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
 - [ ] **Phase 5.2 (log tail -f)** — 콘솔 로그 SSE 스트리밍 (connector C# SSE 엔드포인트 필요)
 - [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
