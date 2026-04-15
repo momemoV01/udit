@@ -67,6 +67,76 @@ Connector version unchanged (`0.6.2`) — bump deferred to `0.7.0`
 when Phase 4c (`build`) lands and v0.5.0 cuts the two together,
 matching the established Phase 2/3 day-1-patch cadence.
 
+**`build` namespace (4 subcommands) — new `ManageBuild` tool.**
+
+```bash
+udit build targets                                       # discover supported BuildTargets
+udit build player --target win64 --output builds/win64/  # standalone player
+udit build player --target android --output app.apk \
+    --scenes Assets/Scenes/Main.unity,Assets/Scenes/Boot.unity \
+    --development
+udit build addressables [--profile MobileRelease]        # AddressableAssetSettings.BuildPlayerContent
+udit build cancel                                        # BuildPipeline.CancelBuild
+```
+
+- `targets` walks every `BuildTarget` enum value and reports
+  `{ name, group, supported }` per entry, plus the active target
+  and `supported_count`. `supported` reflects
+  `BuildPipeline.IsBuildTargetSupported` against the local Editor
+  install — agents filter on this before attempting `build player`.
+- `player` wraps `BuildPipeline.BuildPlayer`. `--target` accepts
+  friendly aliases (win64/win32/mac/linux/android/ios/webgl) plus
+  any full enum name (StandaloneWindows64, etc.). `--output`
+  resolves relative paths against the CLI's cwd (matches
+  `test --output` / `screenshot --output_path`); parent dir is
+  auto-created. `--scenes` is comma-separated; when omitted, falls
+  back to enabled scenes in Build Settings. `--development` enables
+  `BuildOptions.Development`. CLI uses an infinite timeout for
+  `build player` so the agent's global `--timeout` doesn't fire
+  mid-build.
+- `addressables` calls `AddressableAssetSettings.BuildPlayerContent`
+  via reflection — the connector takes no hard dependency on
+  `com.unity.addressables`. Missing-package case returns a clear
+  `UCI-011` pointing at `udit package add com.unity.addressables`.
+  `--profile` temporarily switches `activeProfileId`, then restores
+  it (best-effort).
+- `cancel` calls `BuildPipeline.CancelBuild`. Silent no-op when no
+  build is in progress; response always reports success so re-issue
+  is safe.
+
+Response shape on `player`: full `BuildReport` summary —
+`{ result, platform, output_path, total_size, total_errors,
+total_warnings, duration_sec, build_started_at, build_ended_at,
+steps_count, scenes_count }`. Failed/Cancelled builds return as
+`ErrorResponse` with the same payload so callers don't need to
+parse a different shape.
+
+Out of scope for this slice (deferred to a v0.5.x patch):
+- `--il2cpp` — needs PlayerSettings.SetScriptingBackend with
+  set/restore semantics; failure modes (build crash mid-restore)
+  warrant a careful design pass.
+- `--config <name>` reading build presets from `.udit.yaml`'s
+  `build.targets.<name>` section — adds yaml schema work and
+  nested-map merging. Worth its own slice once the CLI surface
+  has settled in real use.
+
+CLI side: `cmd/build.go` dispatches to `manage_build`, four actions,
+plus a `splitTrim` helper for comma-separated `--scenes` parsing.
+`cmd/root.go` registers `case "build":` with a dedicated `buildSend`
+that uses `client.Send(..., 0)` (infinite timeout) — same trick
+`test` uses for PlayMode runs. `cmd/build_test.go` covers all four
+actions, every `player` flag (target/output/scenes/development),
+absolute-vs-relative output resolution, scene comma-split with
+whitespace + empty-entry handling, missing-required-flag rejections,
+unknown-action and empty-args paths, plus the `splitTrim` helper
+edge cases (16 cases, all green).
+
+Help text in `printHelp` (Builds section) + dedicated `build`
+topic in `printTopicHelp`. Shell completion (bash/zsh/powershell/
+fish) gains the new top-level command + 4 subcommands at both
+call sites. README.md / README.ko.md gain a `### Build` section
+after `### Package`, kept in lockstep per the bilingual doc policy.
+
 ### Fixed
 
 **udit-connector .meta GUIDs permanently separated from upstream

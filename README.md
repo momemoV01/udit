@@ -546,6 +546,40 @@ udit package resolve
 
 All async operations are polled on the editor tick. If a domain reload happens mid-call (most likely on `add` or `remove`), the response can be truncated — re-run `package list` to confirm the post-state.
 
+### Build
+
+Drives Unity's `BuildPipeline` from the CLI. Lets agents discover supported build targets, build standalone players, build Addressables content, and cancel an in-progress build — without dropping into `exec` or scripting custom build editors.
+
+```bash
+# Discover what the local Editor can actually build
+udit build targets
+
+# Build a standalone player. Long-running — typically 30s to many minutes.
+udit build player --target win64 --output builds/win64/
+udit build player --target android --output builds/app.apk \
+    --scenes Assets/Scenes/Main.unity,Assets/Scenes/Boot.unity
+udit build player --target win64 --output builds/dev/ --development
+
+# Addressables (requires com.unity.addressables in the project)
+udit build addressables
+udit build addressables --profile MobileRelease
+
+# Cancel a build that's currently in progress
+udit build cancel
+```
+
+`build targets` walks every `BuildTarget` enum value and reports `{ name, group, supported }` per entry, plus the active target and supported_count totals. `supported` is `BuildPipeline.IsBuildTargetSupported` against the current Editor install — agents should filter on this before attempting `build player`.
+
+`build player` wraps `BuildPipeline.BuildPlayer`. `--target` accepts friendly aliases (`win64`, `win32`, `mac`, `linux`, `android`, `ios`, `webgl`) plus any full enum name (`StandaloneWindows64`, `StandaloneOSX`, etc.). `--output` resolves relative paths against the CLI's cwd (same convention as `test --output` and `screenshot --output_path`); the parent directory is created if missing. `--scenes` is a comma-separated list — when omitted, the enabled scenes from Build Settings are used, matching what the Build Settings dialog does. `--development` enables `BuildOptions.Development`. The CLI uses an infinite timeout for `build player` so the agent's global `--timeout` doesn't fire mid-build.
+
+The response carries the full `BuildReport` summary: `{ result, platform, output_path, total_size, total_errors, total_warnings, duration_sec, build_started_at, build_ended_at, steps_count, scenes_count }`. Failed/Cancelled builds return as `ErrorResponse` with the same payload — caller doesn't need to parse a different shape.
+
+`build addressables` calls `AddressableAssetSettings.BuildPlayerContent` via reflection (so the connector itself doesn't take a hard dependency on `com.unity.addressables`). If the package isn't installed, the response is a clear `UCI-011` error pointing at `udit package add com.unity.addressables`. `--profile` temporarily switches `activeProfileId`, builds, then restores the previous value (best-effort).
+
+`build cancel` calls `BuildPipeline.CancelBuild`. Silent no-op when no build is in progress (the public API doesn't expose "is build active?"), so the response always reports success — re-issue is safe.
+
+`--il2cpp` and `--config <name>` (build presets in `.udit.yaml`) are not wired up in this slice; both arrive in a v0.5.x patch. For IL2CPP today, set the scripting backend in PlayerSettings (or via `exec`) before calling `build player`.
+
 ### Console Logs
 
 ```bash

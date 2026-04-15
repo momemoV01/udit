@@ -787,6 +787,9 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | Phase 4 분할 — 4a(project) + 4b(test) 를 v0.4.3 interim, 4c(build) + 4d(package) 를 v0.5.0 | Phase 2/3 day-1 patch 패턴 계승. project + test 둘만으로도 JUnit XML → CI 통합 경로가 열림 = 체감 가치 라인. `build`는 가장 큰 덩어리(진행도 스트리밍/다중 타겟/IL2CPP), `package`는 중간 크기. build/package 기다리느라 test/project 출시가 밀리는 걸 피하고, v0.5.0은 Phase 4 전체 완성으로 깨끗이 cut. v0.5.0 regression 범위도 두 슬라이스로 제한 |
 | 2026-04-15 | `--output` / `--output_path` 상대경로는 **CLI cwd** 기준 (Unity 프로젝트 루트 X) | 초판은 C# 쪽에서 `Application.dataPath`의 부모(프로젝트 루트) 기준으로 resolve했음. POSIX CLI 관행 위반 — `udit <cmd> --output foo.xml`은 shell 현재 위치에 생기리라 기대. CI/GitHub Actions도 `$GITHUB_WORKSPACE` 기준 기대. 수정: Go CLI가 `filepath.Abs`로 상대→절대 변환 후 HTTP에 실음. C# 쪽은 절대경로 그대로 사용. Direct HTTP 호출자용 project-root fallback은 유지. 헬퍼 `absolutizePath` / `absolutizePathParam` (`cmd/paths.go`) 을 `test --output` (전용 핸들러)과 `screenshot --output_path` (default passthrough) 양쪽에 동일 적용. 미래 path-like 플래그도 동일 지점에서 처리 |
 | 2026-04-15 | udit-connector .meta GUID를 unity-cli와 영구 분리 (Unity 자동 할당값 채택) | fork 시 .meta GUID 분리를 빼먹음. 두 connector를 같은 Unity 프로젝트에 동시 설치하면 GUID 중복 → Unity가 udit-connector 측 27개 GUID 자동 재할당 후 file: source에 write-back. 결과: 메인 디렉토리 working tree가 매번 dirty (27개 .meta modified). v0.4.3까지 commit 안 하고 방치. 해결: Unity가 이미 검증한 새 GUID를 그대로 정식 채택. risk: [UditTool] 클래스는 static, asmdef 외부 dep 없음, package.json.meta GUID는 UPM이 무시 → CLI-only 사용자에 무영향. CLI 변경 없어 새 tag 안 만들고 main push만. Connector 0.6.1 → 0.6.2 patch |
+| 2026-04-15 | Phase 4c (`build`) 1차 슬라이스 — `--il2cpp` / `--config` 보류, 4 actions 채택 | ROADMAP 4.1의 명령 중 `--il2cpp`와 `--config <name>` (`.udit.yaml`의 build preset)는 이번에 미포함. IL2CPP는 PlayerSettings.SetScriptingBackend의 set/restore 패턴 + 빌드 크래시 시 복원 실패 모드가 별도 설계 검토 필요. config-driven build는 yaml schema 추가 + nested map 머지 필요 — 둘 다 build 핵심 (BuildPipeline 래퍼)와 분리 가치. v0.5.x patch에서 증분. 핵심 4 actions (`player`/`targets`/`addressables`/`cancel`)은 1차에 포함해 v0.5.0이 "Phase 4 전체 완성" 마일스톤이 되도록 |
+| 2026-04-15 | Addressables는 reflection-only (asmdef 의존 추가 안 함) | `com.unity.addressables`는 옵션 패키지. udit-connector가 명시 의존 추가하면 미설치 프로젝트에서 connector 자체 컴파일 실패 → 모든 udit 명령 동작 불가. 비대칭적 결합. 대안: `Type.GetType("...AddressableAssetSettings, Unity.Addressables.Editor")` reflection으로 가용성 감지. 미설치 시 명확한 UCI-011 + `udit package add com.unity.addressables` 안내. test-framework는 핵심 기능이라 직접 의존하는 것과 다른 결정 — addressables는 niche 사용자, 대다수 미설치 |
+| 2026-04-15 | `build player` 응답에 `BuildReport.summary` 전체 노출 | Unity의 BuildReport는 풍부한 정보(steps[], packedAssets[] 등)를 가지지만 summary 한 객체에 핵심 metric 모두 있음 (result/totalSize/totalErrors/totalTime/buildStartedAt/buildEndedAt). steps/packedAssets는 큰 빌드에서 수천 항목 → 응답 무거워짐. summary만 노출하고 steps_count/scenes_count는 카운트만. 추가 detail 필요하면 후속 명령(`build inspect`)으로. Failed/Cancelled 빌드도 ErrorResponse로 같은 payload 노출 — 호출자가 다른 shape 파싱 불필요 (ROADMAP 원칙 #4 일관성) |
 
 ---
 
@@ -824,7 +827,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] Phase 4b 착수 — `test list` + `test run --output junit.xml` + CLI-cwd path semantics fix (2026-04-15)
 - [x] **v0.4.3 태그 push + Release 검증** (2026-04-15)
 - [x] Phase 4d 착수 — `package list/add/remove/info/search/resolve` (2026-04-15, Connector bump 보류, v0.5.0과 함께 0.7.0)
+- [x] Phase 4c 착수 — `build player/targets/addressables/cancel` (2026-04-15, Connector bump 보류, v0.5.0과 함께 0.7.0)
+- [ ] **v0.5.0 cut** — Connector 0.6.2 → 0.7.0, CLI tag v0.5.0, CHANGELOG `[Unreleased]` → `[0.5.0]`, Phase 4 전체 완료 표시
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
-- [ ] **Phase 4c 착수** — `build player/targets/addressables` (v0.5.0과 함께 cut)
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)

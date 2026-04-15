@@ -546,6 +546,40 @@ udit package resolve
 
 모든 async 동작은 editor tick에서 폴링. `add`/`remove` 도중 도메인 리로드가 발생하면 응답이 잘릴 수 있음 — 이 경우 `package list`로 사후 상태 재확인.
 
+### Build (플레이어 빌드)
+
+Unity의 `BuildPipeline`을 CLI에서 직접 다룬다. 지원 가능한 타겟 발견, 스탠드얼론 플레이어 빌드, Addressables 콘텐츠 빌드, 진행 중 빌드 취소를 — `exec` 우회나 커스텀 빌드 에디터 작성 없이.
+
+```bash
+# 로컬 에디터가 빌드 가능한 타겟 발견
+udit build targets
+
+# 스탠드얼론 플레이어 빌드. Long-running — 보통 30초 ~ 수 분
+udit build player --target win64 --output builds/win64/
+udit build player --target android --output builds/app.apk \
+    --scenes Assets/Scenes/Main.unity,Assets/Scenes/Boot.unity
+udit build player --target win64 --output builds/dev/ --development
+
+# Addressables (com.unity.addressables 패키지 필요)
+udit build addressables
+udit build addressables --profile MobileRelease
+
+# 진행 중 빌드 취소
+udit build cancel
+```
+
+`build targets`는 모든 `BuildTarget` enum을 순회해 `{ name, group, supported }` 항목 + active 타겟 + supported_count를 반환. `supported`는 현재 에디터 설치본의 `BuildPipeline.IsBuildTargetSupported` 결과 — 에이전트가 `build player` 시도 전 이 값으로 필터해야.
+
+`build player`는 `BuildPipeline.BuildPlayer` 래퍼. `--target`은 alias (`win64` / `win32` / `mac` / `linux` / `android` / `ios` / `webgl`) + full enum 이름 (`StandaloneWindows64` 등) 모두 수용. `--output` 상대경로는 CLI cwd 기준 해석 (`test --output` / `screenshot --output_path`와 동일 관례), 부모 디렉토리는 자동 생성. `--scenes`는 콤마 구분 리스트 — 미명시면 Build Settings의 enabled scene 사용 (File > Build Settings 동작 동일). `--development`는 `BuildOptions.Development`. CLI는 `build player`에 무한 timeout 사용 — 글로벌 `--timeout`이 빌드 도중 발동하지 않음.
+
+응답은 `BuildReport` summary 전체: `{ result, platform, output_path, total_size, total_errors, total_warnings, duration_sec, build_started_at, build_ended_at, steps_count, scenes_count }`. 실패/취소 빌드는 같은 payload를 가진 `ErrorResponse`로 — 호출자가 다른 shape 파싱 불필요.
+
+`build addressables`는 reflection으로 `AddressableAssetSettings.BuildPlayerContent` 호출 (connector 자체는 `com.unity.addressables` 하드 의존 X). 패키지 미설치면 명확한 `UCI-011` 에러 + `udit package add com.unity.addressables` 안내. `--profile`은 임시로 `activeProfileId` 변경 후 빌드, 종료 시 이전 값 복원 (best-effort).
+
+`build cancel`은 `BuildPipeline.CancelBuild` 호출. 진행 중 빌드 없으면 silent no-op (public API에 "빌드 진행 중?" 조회 없음) — 응답은 항상 success, 재실행 안전.
+
+`--il2cpp` 와 `--config <name>` (`.udit.yaml`의 build preset) 은 이번 슬라이스 미포함 — v0.5.x patch에서 추가. IL2CPP는 현재 PlayerSettings에서 scripting backend 설정 (또는 `exec`로) 후 `build player` 호출.
+
 ### 콘솔 로그
 
 ```bash

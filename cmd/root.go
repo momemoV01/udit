@@ -127,6 +127,14 @@ func Execute() error {
 		resp, err = projectCmd(subArgs, send)
 	case "package":
 		resp, err = packageCmd(subArgs, send)
+	case "build":
+		// Player builds run for tens of seconds to many minutes.
+		// Override the global 2-minute timeout so the agent doesn't get
+		// a deadline-exceeded mid-build. Same trick as test (PlayMode).
+		buildSend := func(command string, params interface{}) (*client.CommandResponse, error) {
+			return client.Send(inst, command, params, 0)
+		}
+		resp, err = buildCmd(subArgs, buildSend)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -456,6 +464,13 @@ Packages:
   package info <name>              Package metadata + latest available version
   package search <keyword>         Substring search across registry catalog
   package resolve                  Force re-resolve of manifest.json
+
+Builds:
+  build targets                    List BuildTargets (with supported flag)
+  build player --target <X> --output <dir> [--scenes a,b,c] [--development]
+                                   Build a standalone player (long-running)
+  build addressables [--profile X] Build Addressables content (requires com.unity.addressables)
+  build cancel                     Cancel an in-progress build
 
 Console:
   console                       Read error & warning logs (default)
@@ -1083,6 +1098,95 @@ Notes:
   - Registry calls require network access. Offline-friendly variants
     aren't exposed here; if you need them, exec with Client.List(true)
     or Client.Search(name, true).
+`)
+	case "build":
+		fmt.Print(`Usage: udit build <player|targets|addressables|cancel> [options]
+
+Player builds via Unity's BuildPipeline. Wraps BuildPlayer / target
+discovery / Addressables content build / cancel into a single tool so
+agents can drive CI/automation without dropping into exec.
+
+Subcommands:
+  targets
+      List every BuildTarget enum value with a 'supported' flag
+      (BuildPipeline.IsBuildTargetSupported on the local install).
+      Returns { active, count, supported_count, targets[] } where each
+      entry has { name, group, supported }. Use this to discover what
+      the current Editor can actually build before attempting a player
+      build for a platform.
+
+  player --target <X> --output <dir> [--scenes a,b,c] [--development]
+      Build a standalone player. Long-running — typically 30s to many
+      minutes depending on platform and project size. CLI uses an
+      infinite timeout for this command, so the agent's global
+      --timeout doesn't fire mid-build.
+
+      --target <name>
+          BuildTarget to build for. Aliases recognized: win64 / win32 /
+          mac / linux / android / ios / webgl. Or pass the full enum
+          name (StandaloneWindows64, StandaloneOSX, etc.) — anything
+          ` + "`Enum.TryParse<BuildTarget>`" + ` accepts.
+
+      --output <dir>
+          Path to write the built player to. Relative paths resolve
+          against the CLI's cwd (not Unity's project root) — same
+          convention as ` + "`test --output`" + `. Parent directory is
+          created if it doesn't exist.
+
+      --scenes <a,b,c>
+          Comma-separated scene paths (relative to project root, e.g.
+          Assets/Scenes/Main.unity). When omitted, falls back to the
+          enabled scenes in Build Settings — same default as clicking
+          File > Build Settings > Build.
+
+      --development
+          Sets BuildOptions.Development. Smaller, debuggable builds
+          for testing.
+
+      Response carries the BuildReport summary: result (Succeeded /
+      Failed / Cancelled), platform, output_path, total_size,
+      total_errors, total_warnings, duration_sec, build_started_at,
+      build_ended_at, steps_count, scenes_count.
+
+      Failed/Cancelled builds return ErrorResponse with the same data
+      payload — caller can inspect totals + result without parsing
+      a different shape.
+
+  addressables [--profile <name>]
+      Build Addressables content via AddressableAssetSettings.Build-
+      PlayerContent. Requires com.unity.addressables in the project;
+      returns a clear error otherwise (UCI-011).
+
+      --profile <name> temporarily switches activeProfileId for the
+      build, then restores the previous value (best-effort). When
+      omitted, the current active profile is used.
+
+  cancel
+      Calls BuildPipeline.CancelBuild(). Silent no-op if no build is
+      in progress (the public API doesn't expose "is build active").
+      Always returns success — agent can re-issue safely.
+
+Examples:
+  udit build targets
+  udit build player --target win64 --output builds/win64/
+  udit build player --target android --output builds/app.apk \
+      --scenes Assets/Scenes/Main.unity,Assets/Scenes/Boot.unity \
+      --development
+  udit build addressables
+  udit build addressables --profile MobileRelease
+  udit build cancel
+
+Notes:
+  - Player builds block Unity's main thread for the duration; the
+    Editor UI freezes until the build finishes. Avoid issuing other
+    udit commands against the same Unity instance during a build.
+  - --il2cpp and --config (build presets in .udit.yaml) are not
+    wired up in this slice — both arrive in a v0.5.x patch. For
+    IL2CPP today, switch the scripting backend in PlayerSettings
+    first, then build.
+  - 'targets' lists ALL BuildTarget enum values, including platforms
+    your Editor doesn't have modules installed for. Filter by the
+    ` + "`supported`" + ` flag in the response when picking one.
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]

@@ -58,7 +58,7 @@ _udit_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands="asset completion component console editor exec go help list menu package prefab profiler project reserialize scene screenshot status test tx update version"
+    local commands="asset build completion component console editor exec go help list menu package prefab profiler project reserialize scene screenshot status test tx update version"
     local globals="--port --project --timeout --json --help"
 
     case "$prev" in
@@ -90,6 +90,9 @@ _udit_complete() {
             return ;;
         package)
             COMPREPLY=( $(compgen -W "list add remove info search resolve" -- "$cur") )
+            return ;;
+        build)
+            COMPREPLY=( $(compgen -W "player targets addressables cancel" -- "$cur") )
             return ;;
         test)
             COMPREPLY=( $(compgen -W "run list" -- "$cur") )
@@ -172,6 +175,10 @@ _udit() {
             subs=('list:List declared (or --resolved) packages' 'add:Install by name | name@ver | git URL' 'remove:Uninstall by name' 'info:Package metadata + latest' 'search:Substring search registry' 'resolve:Force re-resolve manifest')
             _describe 'package action' subs
             return ;;
+        build)
+            subs=('player:Build a standalone player (long-running)' 'targets:List supported BuildTargets' 'addressables:Build Addressables content' 'cancel:Cancel an in-progress build')
+            _describe 'build action' subs
+            return ;;
         test)
             subs=('run:Execute tests' 'list:Enumerate tests without running')
             _describe 'test action' subs
@@ -196,6 +203,7 @@ _udit() {
         'tx:Group mutations into a single Undo entry'
         'project:Project info / validate / preflight'
         'package:UPM list/add/remove/info/search/resolve'
+        'build:Player builds (player/targets/addressables/cancel)'
         'console:Read console logs'
         'exec:Execute C# code'
         'list:List all registered tools'
@@ -238,7 +246,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @(
-        'editor', 'scene', 'go', 'component', 'asset', 'prefab', 'tx', 'project', 'package', 'console', 'exec', 'list', 'status', 'test',
+        'editor', 'scene', 'go', 'component', 'asset', 'prefab', 'tx', 'project', 'package', 'build', 'console', 'exec', 'list', 'status', 'test',
         'profiler', 'screenshot', 'reserialize', 'menu',
         'update', 'help', 'version', 'completion'
     )
@@ -257,6 +265,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
         'tx'         { @('begin', 'commit', 'rollback', 'status') }
         'project'    { @('info', 'validate', 'preflight') }
         'package'    { @('list', 'add', 'remove', 'info', 'search', 'resolve') }
+        'build'      { @('player', 'targets', 'addressables', 'cancel') }
         'test'       { @('run', 'list') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
         'completion' { @('bash', 'zsh', 'powershell', 'fish') }
@@ -295,6 +304,7 @@ complete -c udit -n "__fish_use_subcommand" -a "prefab"      -d "Prefab instanti
 complete -c udit -n "__fish_use_subcommand" -a "tx"          -d "Group mutations into a single Undo entry"
 complete -c udit -n "__fish_use_subcommand" -a "project"     -d "Project info / validate / preflight"
 complete -c udit -n "__fish_use_subcommand" -a "package"     -d "UPM list/add/remove/info/search/resolve"
+complete -c udit -n "__fish_use_subcommand" -a "build"       -d "Player builds (player/targets/addressables/cancel)"
 complete -c udit -n "__fish_use_subcommand" -a "console"     -d "Read console logs"
 complete -c udit -n "__fish_use_subcommand" -a "exec"        -d "Execute C# code"
 complete -c udit -n "__fish_use_subcommand" -a "list"        -d "List registered tools"
@@ -317,6 +327,7 @@ complete -c udit -n "__fish_seen_subcommand_from prefab"     -a "instantiate unp
 complete -c udit -n "__fish_seen_subcommand_from tx"         -a "begin commit rollback status"
 complete -c udit -n "__fish_seen_subcommand_from project"    -a "info validate preflight"
 complete -c udit -n "__fish_seen_subcommand_from package"    -a "list add remove info search resolve"
+complete -c udit -n "__fish_seen_subcommand_from build"      -a "player targets addressables cancel"
 complete -c udit -n "__fish_seen_subcommand_from test"       -a "run list"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"
 complete -c udit -n "__fish_seen_subcommand_from completion" -a "bash zsh powershell fish"
