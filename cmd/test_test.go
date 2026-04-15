@@ -1,6 +1,10 @@
 package cmd
 
-import "testing"
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 // --- Backward-compatibility: bare `udit test` routes to `run_tests` ---
 
@@ -59,8 +63,30 @@ func TestTestCmd_RunAllFlags(t *testing.T) {
 	if (*params)["filter"] != "Integration.Level1" {
 		t.Errorf("filter: got %v", (*params)["filter"])
 	}
-	if (*params)["output"] != "test-results/playmode.xml" {
-		t.Errorf("output: got %v", (*params)["output"])
+	// --output is resolved to an absolute path against the CLI's CWD so the
+	// file lands where the caller typed the command, not in Unity's CWD.
+	out, _ := (*params)["output"].(string)
+	if !filepath.IsAbs(out) {
+		t.Errorf("output should be absolute, got %q", out)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(out), "test-results/playmode.xml") {
+		t.Errorf("output should end with the given relative path, got %q", out)
+	}
+}
+
+// TestTestCmd_RunOutputAbsolute verifies an already-absolute --output is
+// forwarded unchanged (no double-joining against CWD).
+func TestTestCmd_RunOutputAbsolute(t *testing.T) {
+	send, params := mockSend("run_tests", t)
+	abs, err := filepath.Abs(filepath.Join(t.TempDir(), "report.xml"))
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	if _, err := testCmd([]string{"run", "--output", abs}, send, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := (*params)["output"]; got != abs {
+		t.Errorf("absolute output should pass through unchanged: got %v want %v", got, abs)
 	}
 }
 

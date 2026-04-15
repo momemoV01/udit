@@ -145,6 +145,12 @@ func Execute() error {
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
 		if err == nil {
+			// Keep CLI path semantics consistent: params that point at a
+			// caller-side file (e.g. `screenshot --output_path`) should land
+			// where the user typed the command, not in Unity's project root.
+			// Narrow allow-list — Unity-side asset paths (e.g. reserialize's
+			// `paths`) must stay untouched.
+			absolutizePathParam(params, "output_path")
 			resp, err = send(category, params)
 		}
 	}
@@ -481,7 +487,7 @@ Reserialize:
 Tests:
   test run [--mode X]             Run EditMode (default) or PlayMode tests
   test run --filter <name>        Filter by namespace, class, or full test name
-  test run --output junit.xml     Also write JUnit XML report next to the results
+  test run --output junit.xml     Also write a JUnit XML report (path relative to CLI cwd)
   test list [--mode X]            Enumerate tests without running them
   test                            Back-compat alias for ` + "`test run`" + `
 
@@ -1069,8 +1075,9 @@ Options:
   --view <mode>      scene (default), game
   --width <N>        Image width in pixels (default: 1920)
   --height <N>       Image height in pixels (default: 1080)
-  --output_path <path>  Output path, absolute or relative to project root
-                        (default: Screenshots/screenshot.png)
+  --output_path <path>  Output path. Relative paths resolve against the
+                        CLI cwd (not Unity's project root).
+                        Default: <project>/Screenshots/screenshot.png
 
 Examples:
   udit screenshot
@@ -1134,9 +1141,10 @@ Subcommands:
                                     MyNamespace.MyClass or
                                     MyNamespace.MyClass.SpecificTest).
       --output <path>               Also write a JUnit XML report.
-                                    Path is absolute or project-root-
-                                    relative. Written after the run so
-                                    CI systems can consume it.
+                                    Relative paths resolve against the
+                                    current working directory (CLI cwd),
+                                    not Unity's. Written after the run
+                                    so CI systems can consume it.
 
   list [--mode X]
       List every test in the requested mode without running any. Returns

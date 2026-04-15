@@ -66,10 +66,9 @@ func testRun(args []string, send sendFn, port int) (*client.CommandResponse, err
 		params["filter"] = filter
 	}
 	if output, ok := flags["output"]; ok {
-		// JUnit XML is written alongside the JSON response; the path may be
-		// absolute OR project-root-relative. The server resolves relative
-		// paths against the Unity project root (parent of Assets/).
-		params["output"] = output
+		// Relative paths resolve against the CLI's CWD (not Unity's) so the
+		// file lands where the caller typed the command. See absolutizePath.
+		params["output"] = absolutizePath(output)
 	}
 
 	resp, err := send("run_tests", params)

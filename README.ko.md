@@ -630,8 +630,8 @@ udit test run --mode PlayMode
 # 전체 테스트 이름으로 필터 (TestRunnerApi의 test path 기준 substring)
 udit test run --filter MyNamespace.MyTests
 
-# JUnit XML 리포트 동시 작성 (CI-friendly). 경로는 프로젝트 루트 상대 또는 절대;
-# 실행 완료 후 작성됨.
+# JUnit XML 리포트 동시 작성 (CI-friendly). 상대 경로는 CLI cwd 기준 해석
+# (Unity 프로젝트 루트 아님); 실행 완료 후 작성됨.
 udit test run --mode PlayMode --output test-results/playmode.xml
 
 # 실행 없이 테스트 enumerate — 필터링 전 discovery에 유용

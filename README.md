@@ -630,8 +630,8 @@ udit test run --mode PlayMode
 # Filter by full test name (substring matches the TestRunnerApi test path)
 udit test run --filter MyNamespace.MyTests
 
-# Also write a JUnit XML report (CI-friendly). Path is project-root-relative
-# or absolute; written after the run completes.
+# Also write a JUnit XML report (CI-friendly). Relative paths resolve
+# against the CLI cwd (not Unity's project root); written after the run.
 udit test run --mode PlayMode --output test-results/playmode.xml
 
 # Enumerate tests without running any — useful for discovery before filtering

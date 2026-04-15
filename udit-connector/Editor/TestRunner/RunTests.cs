@@ -26,7 +26,7 @@ namespace UditConnector.TestRunner
             [ToolParameter("Filter by namespace, class, or full test name")]
             public string Filter { get; set; }
 
-            [ToolParameter("Optional JUnit XML output path (relative to project root or absolute). Written after the run completes.")]
+            [ToolParameter("Optional JUnit XML output path. Absolute recommended. Via `udit` CLI, relative paths resolve against the CLI cwd; direct HTTP callers fall back to the Unity project root.")]
             public string Output { get; set; }
         }
 

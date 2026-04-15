@@ -26,7 +26,7 @@ namespace UditConnector.Tools
             [ToolParameter("Override height (default 1080)", Required = false)]
             public int Height { get; set; }
 
-            [ToolParameter("Output file path, absolute or relative to project root (default: Screenshots/screenshot.png)", Required = false)]
+            [ToolParameter("Output file path. Absolute recommended. Via `udit` CLI, relative paths resolve against the CLI cwd; direct HTTP callers fall back to the Unity project root. Default: <project>/Screenshots/screenshot.png", Required = false)]
             public string OutputPath { get; set; }
         }
 
