@@ -13,6 +13,20 @@ namespace UditConnector.Tools
     [UditTool(Description = "Query and mutate components. Actions: list, get, schema, add, remove, set, copy.")]
     public static class ManageComponent
     {
+        // SerializedPropertyType cases that `component set` does not yet
+        // implement. Each new write-handler removes its entry; the rejection
+        // message in TryParseValueForProperty's default branch is computed
+        // from this set so each commit's diff is a single-line removal.
+        // ExposedReference stays after v0.9.0 (different concept — prefab
+        // variant resolution context — likely never set this way from CLI).
+        static readonly System.Collections.Generic.HashSet<SerializedPropertyType> s_UnsupportedSet = new()
+        {
+            SerializedPropertyType.AnimationCurve,
+            SerializedPropertyType.Gradient,
+            SerializedPropertyType.ManagedReference,
+            SerializedPropertyType.ExposedReference,
+        };
+
         public class Parameters
         {
             [ToolParameter("Action to perform: list, get, schema, add, remove, set, copy", Required = true)]
@@ -877,8 +891,22 @@ namespace UditConnector.Tools
                     }
 
                 default:
-                    error = $"Setting SerializedPropertyType.{prop.propertyType} is not supported yet. This version writes: Integer, Boolean, Float, String, Vector2/3/4, Quaternion, Color, Enum, LayerMask, ObjectReference. AnimationCurve/Gradient/ExposedReference/ManagedReference are read-only for now.";
-                    return false;
+                    {
+                        var unsupportedNames = string.Join(", ", s_UnsupportedSet);
+                        if (s_UnsupportedSet.Contains(prop.propertyType))
+                        {
+                            error = $"Setting SerializedPropertyType.{prop.propertyType} is not supported yet. " +
+                                    $"Pending write support: {unsupportedNames}.";
+                        }
+                        else
+                        {
+                            error = $"Setting SerializedPropertyType.{prop.propertyType} is not supported yet. " +
+                                    $"Currently writes: Integer, Boolean, Float, String, Vector2/3/4, Quaternion, " +
+                                    $"Color, Enum, LayerMask, ObjectReference. " +
+                                    $"Pending: {unsupportedNames}.";
+                        }
+                        return false;
+                    }
             }
         }
 
