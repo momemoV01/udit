@@ -4,6 +4,123 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-15
+
+Opens Phase 5 (Stream). A single deliverable: `udit watch` — a
+long-running file-system watcher that runs pre-defined sub-commands
+from `.udit.yaml` when matching files change. Zero LLM calls per
+event; local CI-style automation inside the editor loop.
+
+No connector version bump — watch is CLI-only. Connector stays at
+`0.7.0`.
+
+### Added
+
+**`watch` command — `.udit.yaml`-driven file-change automation.**
+
+```bash
+udit watch                     # run hooks from .udit.yaml
+udit watch --config foo.yaml   # explicit config path
+udit watch --no-exec           # preview what would run
+udit watch --json              # NDJSON event log on stdout
+udit watch --verbose           # extra diagnostic log
+```
+
+Config extension (`watch:` section inside `.udit.yaml`):
+
+```yaml
+watch:
+  debounce: 300ms
+  on_busy: queue          # queue (default) | ignore
+  max_parallel: 4
+  case_insensitive: true  # default true on Windows
+  ignore:
+    - "**/*.generated.cs"
+  defaults_ignore: true   # Library/Temp/Logs auto-ignored
+  hooks:
+    - name: compile
+      paths: [Assets/**/*.cs, Packages/**/*.cs]
+      run: refresh --compile
+    - name: reserialize
+      paths: [Assets/**/*.prefab, Assets/**/*.unity]
+      run: reserialize $RELFILE
+      run_on_start: false
+      debounce: 500ms     # hook-level override
+      on_busy: queue
+```
+
+**Variable expansion in `run` strings** (per-token policy, no silent
+data loss):
+
+- `$FILE` / `$RELFILE` → per-file invocation (N-file batch fires the
+  hook N times, serialized).
+- `$FILES` / `$RELFILES` → single invocation, paths injected via env
+  `UDIT_CHANGED_FILES` / `UDIT_CHANGED_RELFILES` (newline-separated).
+  Left literal in argv to avoid the Windows 8191-char argv limit.
+- `$EVENT` — dominant event type: `create` / `write` / `remove` /
+  `rename`.
+- `$HOOK` — hook name (useful for logging).
+- Using both `$FILE`-class AND `$FILES`-class in one `run` is a
+  config-load error (pick per-file or batch dispatch).
+
+**Safety mechanisms**:
+
+- **Circuit breaker**: 10 fires in 10 seconds disables the hook
+  (self-trigger loop protection) with an explicit log suggesting the
+  ignore patterns to add.
+- **max_parallel**: global semaphore caps concurrent hook executions.
+- **`.meta` sibling collapse**: Unity rewrites `.meta` files slightly
+  after the real asset; the debouncer merges them into one logical
+  event. Orphan `.meta` (sibling missing on disk) surfaces as a
+  remove on the real asset path.
+- **Signals**: `Ctrl+C` once drains in-flight hooks + exits cleanly;
+  within 2 seconds a second `Ctrl+C` force-quits.
+
+### Implementation
+
+- `internal/watch/` — new package:
+  - `config.go` — `WatchCfg` / `Hook` types (embedded in `cmd.Config`).
+  - `ignore.go` — built-in Unity defaults (Library/, Temp/, Logs/, …)
+    plus user patterns via `doublestar` glob matching.
+  - `matcher.go` — stateless hook-to-path matcher.
+  - `debounce.go` — per-file timer map + `.meta` collapse.
+  - `watcher.go` — fsnotify wrap with recursive walk-and-add (fsnotify
+    does not recurse on its own) and `WithBufferSize` tuning for
+    Windows `ReadDirectoryChangesW`.
+  - `runner.go` — per-hook worker goroutine with queue/ignore
+    policies + sliding-window circuit breaker.
+  - `expand.go` — variable substitution + POSIX-like arg tokenizer.
+  - `clock.go` — `Clock` interface for deterministic debounce tests.
+- `cmd/watch.go` — CLI entry; shells out to the same `udit` binary
+  via `os.Executable()` for each hook invocation (no in-process
+  recursive dispatch; keeps `flag.CommandLine` / `os.Exit` / config
+  state clean between hooks).
+- `cmd/root.go` — `case "watch":` added **above** the
+  `DiscoverInstance` call so watch can start without Unity running.
+- `cmd/config.go` — `Config.Watch watch.WatchCfg` field (yaml.v3
+  silently ignores the `watch:` section in configs without it).
+
+New dependencies:
+
+- `github.com/fsnotify/fsnotify v1.9.0` (MIT)
+- `github.com/bmatcuk/doublestar/v4 v4.10.0` (MIT, stdlib-only)
+
+### Deferred to v0.6.x
+
+- `udit watch --path P --on-change C` ad-hoc mode (no config file).
+- `watch reload` hot-reload of `.udit.yaml` (MVP logs a notice when
+  the config file changes but does not reload).
+- `on_busy: restart` policy (Windows Process.Kill + pipe drain +
+  orphan subprocess handling deferred until user demand justifies
+  complexity).
+
+### Upgrade notes
+
+- `.udit.yaml` remains fully backwards-compatible; configs without a
+  `watch:` section are unaffected.
+- `udit watch` is a new subcommand — no existing workflow behavior
+  changes.
+
 ## [0.5.0] - 2026-04-15
 
 Closes Phase 4 (Automate). Two new tool surfaces — `package` (UPM)

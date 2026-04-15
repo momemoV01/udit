@@ -721,6 +721,65 @@ Unity Test Framework 패키지 필요. PlayMode 테스트는 도메인 리로드
 udit list
 ```
 
+### Watch (v0.6.0+)
+
+`udit watch`는 `.udit.yaml`에 정의된 후크를 파일 변경 시점에 자동 실행하는 장기 실행 워처입니다. LLM 호출 없이 에디터 루프 안에서 동작하는 로컬 CI 스타일 자동화.
+
+```bash
+# .udit.yaml이 프로젝트 루트(또는 상위 디렉토리)에 있어야 함
+udit watch
+
+# 실제 실행 없이 어떤 명령이 돌지만 출력
+udit watch --no-exec
+
+# NDJSON 이벤트 로그 출력
+udit watch --json | tee watch.log
+```
+
+`.udit.yaml` 예시:
+
+```yaml
+watch:
+  debounce: 300ms
+  on_busy: queue          # queue(기본) 또는 ignore
+  max_parallel: 4
+  case_insensitive: true
+  ignore:
+    - "**/*.generated.cs"
+  hooks:
+    - name: compile
+      paths: [Assets/**/*.cs, Packages/**/*.cs]
+      run: refresh --compile
+    - name: reserialize
+      paths: [Assets/**/*.prefab, Assets/**/*.unity]
+      run: reserialize $RELFILE
+```
+
+`run` 안의 변수:
+
+| 토큰 | 의미 |
+|---|---|
+| `$FILE` | 절대 경로 (forward slash). **파일별** 개별 호출 발동. |
+| `$RELFILE` | 프로젝트 루트 상대 경로 (예: `Assets/Scripts/Foo.cs`). 파일별. |
+| `$FILES` / `$RELFILES` | argv에는 리터럴로 남음. 경로 목록은 환경변수 `UDIT_CHANGED_FILES` / `UDIT_CHANGED_RELFILES` (줄바꿈 구분)로 주입. 배치당 1회 호출. |
+| `$EVENT` | 배치의 대표 이벤트 타입: `create` / `write` / `remove` / `rename`. |
+| `$HOOK` | 후크 이름 (로깅용). |
+
+하나의 `run` 안에 `$FILE` 계열과 `$FILES` 계열을 **함께 쓰면 config 로드 에러** — 파일별 or 배치 중 하나를 선택.
+
+빌트인 Unity 무시 패턴 (사용자 `ignore:`에 추가로 병합, `defaults_ignore: false`로 끌 수 있음):
+`Library/`, `Temp/`, `Logs/`, `MemoryCaptures/`, `UserSettings/`,
+`Build/`, `Builds/`, `obj/`, `.git/`, `.vs/`, `.idea/`, `.vscode/`,
+`*.csproj`, `*.sln`, `*~`, `*.tmp`, `.#*`.
+
+**안전 장치**:
+- **서킷 브레이커**: 후크가 10초 안에 10번 발동하면 자동으로 비활성화됩니다 (self-trigger 루프 방지). 후크가 쓰는 출력 경로를 `ignore:`에 추가하세요.
+- **max_parallel**이 여러 후크가 동시에 매칭될 때 동시 실행 수를 제한합니다.
+
+**시그널**:
+- `Ctrl+C` 1회 — 실행 중 후크 완료 대기 후 정상 종료.
+- `Ctrl+C` 2회 (2초 이내) — 강제 종료.
+
 ### 셸 자동완성
 
 ```bash

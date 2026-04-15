@@ -75,6 +75,11 @@ func Execute() error {
 		return updateCmd(subArgs)
 	case "completion":
 		return completionCmd(subArgs)
+	case "watch":
+		// watch is a long-running command that doesn't require Unity to
+		// be alive at startup — hooks may run when Unity is off (e.g.
+		// lint-only hooks). Must be handled before DiscoverInstance.
+		return runWatch(subArgs, flagJSON)
 	case "status":
 		inst, err := client.DiscoverInstance(flagProject, flagPort)
 		if err != nil {
@@ -540,6 +545,11 @@ Status:
 Update:
   update                        Update to the latest version
   update --check                Check for updates without installing
+
+Watch:
+  watch                         Run hooks from .udit.yaml on file changes
+  watch --config <path>         Use an explicit config file
+  watch --no-exec               Print what would run without executing
 
 Completion:
   completion <shell>            Print shell completion script (bash, zsh,
@@ -1385,6 +1395,66 @@ Options:
 Examples:
   udit update
   udit update --check
+`)
+	case "watch":
+		fmt.Print(`Usage: udit watch [options]
+
+Long-running watcher that fires pre-defined hooks from .udit.yaml when
+matching files change. Zero LLM calls per event — this is local, CI-style
+automation inside the editor loop.
+
+Options:
+  --config PATH        Path to .udit.yaml (default: walk up from cwd)
+  --json               Emit NDJSON event log on stdout (OR with global --json)
+  --verbose            Emit verbose diagnostic log on stderr
+  --no-exec            Print what would run; don't execute hooks
+
+Config (watch: section of .udit.yaml):
+  watch:
+    debounce: 300ms               # default; per-hook override supported
+    on_busy: queue                # queue | ignore (default queue)
+    max_parallel: 4               # global concurrent hook cap
+    case_insensitive: true        # default true on Windows
+    ignore:                       # appended to built-in Unity defaults
+      - "**/*.generated.cs"
+    defaults_ignore: true         # Library/Temp/Logs auto-ignored
+    hooks:
+      - name: compile
+        paths: [Assets/**/*.cs, Packages/**/*.cs]
+        run: refresh --compile
+      - name: reserialize
+        paths: [Assets/**/*.prefab, Assets/**/*.unity]
+        run: reserialize $RELFILE
+        run_on_start: false       # fire once at startup for matching files
+
+Variables (in hook.run):
+  $FILE         Absolute path (forward slash). Presence triggers per-file
+                invocation — hook runs once per file in the debounced batch.
+  $RELFILE      Project-relative form (e.g. Assets/Scripts/Foo.cs). Also
+                triggers per-file invocation.
+  $FILES        Literal left in argv; newline-separated list injected via
+                env UDIT_CHANGED_FILES. Single hook invocation per batch.
+  $RELFILES     Same as $FILES but project-relative, via UDIT_CHANGED_RELFILES.
+  $EVENT        Dominant event type in the batch: create|write|remove|rename.
+  $HOOK         The hook's name.
+
+Mixing $FILE-class and $FILES-class in one 'run' string is a config-load
+error — pick per-file or batch dispatch.
+
+Safety:
+  - Circuit breaker: if a hook fires 10 times in 10 seconds it is disabled
+    (self-trigger loop protection). Add your output paths to ignore:.
+  - max_parallel caps concurrent hooks to prevent fork-bombs.
+
+Signals:
+  Ctrl+C once    Drain in-flight hooks, then exit cleanly
+  Ctrl+C twice   Force quit (within 2s of first)
+
+Examples:
+  udit watch
+  udit watch --config ./.udit.yaml
+  udit watch --no-exec           # preview without executing
+  udit watch --json | tee watch.log
 `)
 	case "custom-tools", "custom", "tools":
 		fmt.Print(`How to write custom tools for udit

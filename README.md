@@ -721,6 +721,71 @@ Requires the Unity Test Framework package. PlayMode tests trigger a domain reloa
 udit list
 ```
 
+### Watch (v0.6.0+)
+
+`udit watch` is a long-running file-system watcher that runs pre-defined
+udit sub-commands when matching files change. Zero LLM calls — this is
+local, CI-style automation inside the editor loop.
+
+```bash
+# With a .udit.yaml in project root (or any parent dir)
+udit watch
+
+# Preview without executing hooks
+udit watch --no-exec
+
+# Emit NDJSON event log
+udit watch --json | tee watch.log
+```
+
+Example `.udit.yaml`:
+
+```yaml
+watch:
+  debounce: 300ms
+  on_busy: queue          # queue (default) or ignore
+  max_parallel: 4
+  case_insensitive: true
+  ignore:
+    - "**/*.generated.cs"
+  hooks:
+    - name: compile
+      paths: [Assets/**/*.cs, Packages/**/*.cs]
+      run: refresh --compile
+    - name: reserialize
+      paths: [Assets/**/*.prefab, Assets/**/*.unity]
+      run: reserialize $RELFILE
+```
+
+Variables in `run`:
+
+| Token | Meaning |
+|---|---|
+| `$FILE` | Absolute path (forward slash). Triggers per-file invocation. |
+| `$RELFILE` | Project-relative path (e.g. `Assets/Scripts/Foo.cs`). Per-file. |
+| `$FILES` / `$RELFILES` | Left literal in argv; paths injected via env `UDIT_CHANGED_FILES` / `UDIT_CHANGED_RELFILES`. Single hook invocation per batch. |
+| `$EVENT` | Dominant event in batch: `create` / `write` / `remove` / `rename`. |
+| `$HOOK` | The hook's name (useful for logging). |
+
+Mixing `$FILE`-class and `$FILES`-class tokens in one `run` string is a
+config-load error — pick per-file or batch dispatch.
+
+Built-in Unity ignores (appended to user `ignore:` unless `defaults_ignore: false`):
+`Library/`, `Temp/`, `Logs/`, `MemoryCaptures/`, `UserSettings/`,
+`Build/`, `Builds/`, `obj/`, `.git/`, `.vs/`, `.idea/`, `.vscode/`,
+`*.csproj`, `*.sln`, `*~`, `*.tmp`, `.#*`.
+
+**Safety**:
+- **Circuit breaker**: if a hook fires 10 times in 10 seconds it is
+  disabled (protects against self-trigger loops). Add hook output paths
+  to `ignore:` if this trips.
+- **max_parallel** caps concurrent hook executions to prevent fork-bombs
+  when many hooks match a single save.
+
+**Signals**:
+- `Ctrl+C` once — drain in-flight hooks and exit cleanly.
+- `Ctrl+C` twice (within 2s) — force quit.
+
 ### Shell completion
 
 ```bash

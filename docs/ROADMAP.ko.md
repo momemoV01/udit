@@ -790,6 +790,11 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | Phase 4c (`build`) 1차 슬라이스 — `--il2cpp` / `--config` 보류, 4 actions 채택 | ROADMAP 4.1의 명령 중 `--il2cpp`와 `--config <name>` (`.udit.yaml`의 build preset)는 이번에 미포함. IL2CPP는 PlayerSettings.SetScriptingBackend의 set/restore 패턴 + 빌드 크래시 시 복원 실패 모드가 별도 설계 검토 필요. config-driven build는 yaml schema 추가 + nested map 머지 필요 — 둘 다 build 핵심 (BuildPipeline 래퍼)와 분리 가치. v0.5.x patch에서 증분. 핵심 4 actions (`player`/`targets`/`addressables`/`cancel`)은 1차에 포함해 v0.5.0이 "Phase 4 전체 완성" 마일스톤이 되도록 |
 | 2026-04-15 | Addressables는 reflection-only (asmdef 의존 추가 안 함) | `com.unity.addressables`는 옵션 패키지. udit-connector가 명시 의존 추가하면 미설치 프로젝트에서 connector 자체 컴파일 실패 → 모든 udit 명령 동작 불가. 비대칭적 결합. 대안: `Type.GetType("...AddressableAssetSettings, Unity.Addressables.Editor")` reflection으로 가용성 감지. 미설치 시 명확한 UCI-011 + `udit package add com.unity.addressables` 안내. test-framework는 핵심 기능이라 직접 의존하는 것과 다른 결정 — addressables는 niche 사용자, 대다수 미설치 |
 | 2026-04-15 | `build player` 응답에 `BuildReport.summary` 전체 노출 | Unity의 BuildReport는 풍부한 정보(steps[], packedAssets[] 등)를 가지지만 summary 한 객체에 핵심 metric 모두 있음 (result/totalSize/totalErrors/totalTime/buildStartedAt/buildEndedAt). steps/packedAssets는 큰 빌드에서 수천 항목 → 응답 무거워짐. summary만 노출하고 steps_count/scenes_count는 카운트만. 추가 detail 필요하면 후속 명령(`build inspect`)으로. Failed/Cancelled 빌드도 ErrorResponse로 같은 payload 노출 — 호출자가 다른 shape 파싱 불필요 (ROADMAP 원칙 #4 일관성) |
+| 2026-04-15 | Phase 5.1 (`watch`) — shell-out hook dispatch + fsnotify + doublestar | 대안은 in-process recursive CLI dispatch. 분석: `cmd/root.go`는 전역 `flag.CommandLine`, `os.Args`, 8+개의 `os.Exit()` 호출 사용 — 재귀 dispatch 시 flag 상태 오염 + 종료 처리 꼬임, 6주짜리 리팩터. Shell out (`exec.Command("udit", argv...)` via `os.Executable()`)은 fresh 상태로 깨끗함. 대가: fork/exec cost per hook (~50-100ms cold). 파일 저장 빈도에서 허용. fsnotify + doublestar: 둘 다 MIT, stdlib-only. `rjeczalik/notify`가 Windows native 재귀를 제공하지만 유지보수 불확실(2022 이후 릴리스 없음). 재귀는 `filepath.WalkDir` + `Add()` + CREATE-dir 이벤트 시 walk — ~50줄. `go-gitignore` 대신 `doublestar` 선택: inversion(`!pattern`) 불필요, 더 가벼움 |
+| 2026-04-15 | `on_busy: queue+dedupe` default, `restart` MVP 제외 | Unity `refresh --compile`은 ~5초 소요. 실행 중 새 이벤트 오면: (a) queue+dedupe — 현재 run 끝날 때까지 pending path set에 쌓아두고 merge해서 fire, (b) ignore — drop, (c) restart — 현재 run kill. AssetDatabase 중간 취소는 Library/ 상태 손상 위험. queue는 모든 signal 보존 + 안전. ignore는 선택지로 남김. restart는 Windows Process.Kill + stdin close + pipe drain + orphan subprocess 고려 필요 — MVP 가치 대비 복잡도 과함. 필요 시 v0.6.x patch |
+| 2026-04-15 | `$FILE` per-file, `$FILES` batch+env — per-token 정책 | 대안 1: `$FILE`=first-in-batch 후 나머지 drop (plan agent는 "silent data loss footgun" 지적). 대안 2: 항상 파일별 1회 (save-all 100개 → 100회 호출 낭비). 채택: run 문자열에 $FILE/$RELFILE 있으면 파일별 fan-out, $FILES/$RELFILES 있으면 1회 호출 + env var. 둘 다 쓰면 config load error. Agent 의도를 문법으로 강제 — 실수로 데이터 누락 불가. `$RELFILE`은 Unity가 원하는 `Assets/...` 형태 (reserialize 등 passthrough 명령과 자연스럽게 결합) |
+| 2026-04-15 | .meta 파일은 sibling 기준으로 collapse (debouncer에서) | Unity는 asset 저장 후 `.meta` 파일을 별도로 씀 (labels, importer settings 등 변경 시). 단순히 fsnotify 이벤트를 통과시키면 `Foo.cs` + `Foo.cs.meta` 두 개 이벤트 → 한 번의 save에 hook 2회 발동. Debouncer에서 `.meta` suffix 감지, sibling이 pending이면 drop, sibling이 디스크에 존재하면 sibling path로 write 이벤트, 없으면 (= orphan meta = 삭제 신호) sibling path로 remove 이벤트. Unity 워크플로 지식이 필요한 노이즈 제거 — 쓰는 사람(agent)이 `.meta`를 직접 처리 안 해도 됨 |
+| 2026-04-15 | Circuit breaker 10-fires-in-10s (hook disable, process 재시작에만 reset) | 자기-트리거 루프가 watch의 가장 큰 footgun. Hook이 자기 glob에 매치되는 경로를 쓰면 fire→write→fire 무한. 문서로만 대응하면 첫 사용자가 즉시 당함. 10회/10초 감지 시 해당 hook만 disable + 명시적 log + ignore 가이드. Process 재시작 전까지 자동 re-enable 안 함 — 재시작 = 사용자가 config 고쳤다는 신호. 오탐 리스크: hook이 정당하게 자주 돌아야 하는 케이스에는 `max_parallel` 대신 hook-level `debounce` override 사용 권장. 10/10s는 전형적인 dev-loop 대비 충분히 보수적 |
 
 ---
 
@@ -829,7 +834,11 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] Phase 4d 착수 — `package list/add/remove/info/search/resolve` (2026-04-15, Connector bump 보류, v0.5.0과 함께 0.7.0)
 - [x] Phase 4c 착수 — `build player/targets/addressables/cancel` (2026-04-15, Connector bump 보류, v0.5.0과 함께 0.7.0)
 - [x] **v0.5.0 태그 push + Release 검증** (2026-04-15) — Connector 0.7.0, Phase 4 (Automate) 전체 완성
+- [x] Phase 5.1 착수 — `watch` (fsnotify + .udit.yaml hooks + 서킷 브레이커 + .meta collapse) (2026-04-15)
+- [ ] **v0.6.0 태그 push + Release 검증** — Phase 5.1 완성 (watch만; 5.2 log tail은 별도 릴리스)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
-- [ ] **Phase 5 (Stream) 착수** — `watch` (파일 변경 + 자동화), `log tail -f`, optional `run` 스크립트 러너
+- [ ] **Phase 5.2 (log tail -f)** — 콘솔 로그 SSE 스트리밍 (connector C# SSE 엔드포인트 필요)
+- [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
+- [ ] `udit watch --path P --on-change C` — ad-hoc 모드 (config 없이), v0.6.x 증분
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)
