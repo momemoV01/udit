@@ -20,7 +20,7 @@ That felt wrong. If I can `curl` a URL, why do I need all that?
 
 So I built the opposite: a single binary that talks directly to Unity via HTTP. No server to run — the Unity package listens automatically. No config to write — it discovers Unity instances on its own. No tool registration — just call by name. No caching, no protocol layers, no ceremony.
 
-The entire CLI is ~800 lines of Go (plus ~300 lines of help text). The Unity-side connector is ~2,300 lines of C#. It's just a thin layer that lets you control Unity from the shell — nothing more. You install the binary, add the Unity package, and it works.
+The CLI is a few thousand lines of Go, the Unity-side connector a few thousand lines of C# — all of it focused on the same happy path: an HTTP call from the shell lands on a handler running on Unity's main thread. No protocol layers, no server boilerplate, no MCP-style tool registration ceremony. You install the binary, add the Unity package, and it works.
 
 ## Install
 
@@ -73,7 +73,7 @@ Or add directly to `Packages/manifest.json`:
 "com.momemov01.udit-connector": "https://github.com/momemoV01/udit.git?path=udit-connector"
 ```
 
-To pin a specific version, append a tag to the URL (e.g. `#v0.2.21`).
+To pin a specific version, append a tag to the URL (e.g. `#v0.9.0`).
 
 Once added, the Connector starts automatically when Unity opens. No configuration needed.
 
@@ -1209,14 +1209,20 @@ Reproducer and full results in [ROADMAP Decision Log — 2026-04-15 (Sprint 3 C1
 
 ## Roadmap
 
-See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the phased plan from `v0.1.0` (current baseline) through `v1.0.0` (API-frozen, production-ready). Highlights:
+See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the phased plan through `v1.0.0` (API-frozen, production-ready). Shipped so far:
 
 - **v0.2.0 — Foundation** — bug fixes, global `--json` output, error code registry, `.udit.yaml` config
-- **v0.3.0 — Observe** — `scene` / `go` / `asset` / `component` query commands (no more `exec` for reads)
-- **v0.4.0 — Mutate** — GameObject / component / prefab creation, modification, deletion
+- **v0.3.x — Observe** — `scene` / `go` / `asset` / `component` query commands (no more `exec` for reads)
+- **v0.4.x — Mutate** — GameObject / component / prefab creation, modification, deletion, `tx` transactions
 - **v0.5.0 — Automate** — `build player`, `package` (UPM), extended `test`, project preflight
-- **v0.6.0 — Stream** — `watch` mode, `log tail --follow` over SSE
-- **v1.0.0 — Polish & Freeze** — 50%+ test coverage, cookbook docs, 5-year API commitment
+- **v0.6.x — Stream (watch)** — `watch` mode with `.udit.yaml` hooks and filesystem debouncing
+- **v0.7.x — Stream (log tail)** — `log tail` SSE with auto-reconnect across domain reloads; `build player --il2cpp` + presets
+- **v0.8.x — Run** — `udit run <task>` script runner with recursion + cycle detection; `config` namespace; ad-hoc `watch --path`
+- **v0.9.0 — Advanced component writes** *(current)* — AnimationCurve / Gradient / ManagedReference / scene references
+
+Upcoming:
+
+- **v1.0.0 — Polish & Freeze** — higher coverage targets, cookbook docs, API commitment
 
 ## Acknowledgments
 

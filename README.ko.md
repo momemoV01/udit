@@ -20,7 +20,7 @@
 
 그래서 정반대를 만들었습니다: HTTP로 Unity와 직접 통신하는 단일 바이너리. 띄울 서버 없음 — Unity 패키지가 자동으로 listen합니다. 작성할 설정 없음 — Unity 인스턴스를 스스로 발견합니다. tool 등록 없음 — 이름으로 호출만 하면 됩니다. 캐싱도, 프로토콜 레이어도, 의식도 없습니다.
 
-전체 CLI는 약 800줄의 Go (그리고 약 300줄의 도움말 텍스트)입니다. Unity 쪽 connector는 약 2,300줄의 C#. shell에서 Unity를 조작하게 해주는 얇은 레이어 — 그 이상도 이하도 아닙니다. 바이너리 설치하고, Unity 패키지 추가하면 작동합니다.
+CLI는 Go 수천 줄, Unity 쪽 connector는 C# 수천 줄 — 전체가 하나의 happy path에 집중돼 있습니다. shell에서 HTTP 호출하면 Unity 메인 스레드에서 핸들러가 처리하고 끝. 프로토콜 레이어도, 서버 boilerplate도, MCP식 tool 등록 의례도 없습니다. 바이너리 설치하고, Unity 패키지 추가하면 작동합니다.
 
 ## 설치
 
@@ -73,7 +73,7 @@ https://github.com/momemoV01/udit.git?path=udit-connector
 "com.momemov01.udit-connector": "https://github.com/momemoV01/udit.git?path=udit-connector"
 ```
 
-특정 버전을 고정하려면 URL에 태그 추가 (예: `#v0.2.21`).
+특정 버전을 고정하려면 URL에 태그 추가 (예: `#v0.9.0`).
 
 추가 후 Unity가 열리면 Connector가 자동으로 시작됩니다. 추가 설정 불필요.
 
@@ -1194,14 +1194,20 @@ udit editor play
 
 ## 로드맵
 
-`v0.1.0` (현재 기반선)부터 `v1.0.0` (API 동결, production-ready)까지의 단계별 계획은 [`docs/ROADMAP.ko.md`](./docs/ROADMAP.ko.md) 참고. 하이라이트:
+`v1.0.0` (API 동결, production-ready)까지의 단계별 계획은 [`docs/ROADMAP.ko.md`](./docs/ROADMAP.ko.md) 참고. 지금까지 출시된 것:
 
-- **v0.2.0 — Foundation** ✅ — 버그 픽스, 글로벌 `--json` 출력, 에러 코드 레지스트리, `.udit.yaml` config, 셸 완성
-- **v0.3.0 — Observe** — `scene` / `go` / `asset` / `component` 쿼리 명령 (읽기에 더 이상 `exec` 불필요)
-- **v0.4.0 — Mutate** — GameObject / 컴포넌트 / prefab 생성·수정·삭제
+- **v0.2.0 — Foundation** — 버그 픽스, 글로벌 `--json` 출력, 에러 코드 레지스트리, `.udit.yaml` config, 셸 완성
+- **v0.3.x — Observe** — `scene` / `go` / `asset` / `component` 쿼리 명령 (읽기에 더 이상 `exec` 불필요)
+- **v0.4.x — Mutate** — GameObject / 컴포넌트 / prefab 생성·수정·삭제, `tx` 트랜잭션
 - **v0.5.0 — Automate** — `build player`, `package` (UPM), 확장된 `test`, project preflight
-- **v0.6.0 — Stream** — `watch` 모드, SSE로 `log tail --follow`
-- **v1.0.0 — Polish & Freeze** — 50%+ 테스트 커버리지, cookbook 문서, 5년 API commitment
+- **v0.6.x — Stream (watch)** — `.udit.yaml` hook 기반 `watch` 모드 + 파일시스템 debounce
+- **v0.7.x — Stream (log tail)** — SSE `log tail` 자동 재연결 (도메인 리로드 포함); `build player --il2cpp` + preset
+- **v0.8.x — Run** — 재귀 + cycle 감지 있는 `udit run <task>` 스크립트 러너; `config` namespace; ad-hoc `watch --path`
+- **v0.9.0 — 고급 component set** *(현재)* — AnimationCurve / Gradient / ManagedReference / 씬 참조
+
+예정:
+
+- **v1.0.0 — Polish & Freeze** — 커버리지 목표 상향, cookbook 문서, API commitment
 
 ## 감사의 말
 
