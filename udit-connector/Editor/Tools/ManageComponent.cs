@@ -1332,15 +1332,79 @@ namespace UditConnector.Tools
                 return true;
             }
 
-            // Scene-object references (go:XXXXXXXX) go through a different
-            // code path in Unity — they carry a SceneObjectReference payload
-            // rather than an asset PPtr. Punt on those in v0.4.x with a
-            // clear hint; an agent that really needs scene refs can fall
-            // back to exec until we ship them properly.
+            // Scene-object references (go:XXXXXXXX). Historically rejected
+            // (v0.4.1 conservative cut) on the claim that scene refs need a
+            // distinct SceneObjectReference payload. Modern Unity accepts
+            // `prop.objectReferenceValue = sceneGameObject` directly when
+            // the host and target share a scene — supported in v0.9.0
+            // with cross-scene + persistent-host guards matching Inspector
+            // default behavior (EditorSceneManager.preventCrossSceneReferences).
             if (value.StartsWith("go:", StringComparison.Ordinal))
             {
-                error = $"Scene object references ({value}) are not writable via component set in this version. " +
-                        $"Use `udit exec` to assign scene references for now.";
+                if (!StableIdRegistry.TryResolve(value, out var sceneGo))
+                {
+                    error = $"GameObject not found for stable ID {value}. Run `udit go find` / `udit scene tree` to get a current id.";
+                    return false;
+                }
+
+                var host = prop.serializedObject.targetObject;
+
+                // Prefab assets, ScriptableObject assets, and in-memory
+                // prefab-edit-mode hosts cannot legally hold a scene
+                // reference — Unity will strip the write on reload. Reject
+                // loudly rather than writing dead data.
+                if (EditorUtility.IsPersistent(host))
+                {
+                    error = $"Cannot assign scene GameObject {value} to a persistent (prefab / asset) host. " +
+                            $"Scene refs only make sense on scene-resident hosts.";
+                    return false;
+                }
+
+                // Expected type extraction. `prop.type` returns the string
+                // form used throughout udit already — plan's
+                // `objectReferenceTypeString` suggestion turned out to not
+                // be a real property on SerializedProperty; stick with the
+                // working `prop.type` that the asset path above also uses.
+                var sceneExpectedTypeName = StripPPtrWrapper(prop.type);
+                var sceneExpectedType = ResolveUnityObjectType(sceneExpectedTypeName);
+
+                if (sceneExpectedType == typeof(GameObject) || sceneExpectedType == null)
+                {
+                    // GameObject field — same-scene check (host-as-Component
+                    // gives us its scene; ScriptableObject hosts already
+                    // rejected above via IsPersistent).
+                    if (host is Component hostComp && hostComp.gameObject.scene != sceneGo.scene)
+                    {
+                        error = $"Cross-scene reference rejected: host scene '{hostComp.gameObject.scene.name}' vs target scene '{sceneGo.scene.name}'.";
+                        return false;
+                    }
+                    obj = sceneGo;
+                    return true;
+                }
+
+                if (typeof(Component).IsAssignableFrom(sceneExpectedType))
+                {
+                    // Component field — auto-extract the component. First wins,
+                    // matching the sub-asset auto-pick above (LoadAllAssetsAtPath
+                    // + first-assignable). Multi-component GOs (e.g. two Cameras)
+                    // resolve to GetComponent's first return.
+                    if (host is Component hostComp2 && hostComp2.gameObject.scene != sceneGo.scene)
+                    {
+                        error = $"Cross-scene reference rejected: host scene '{hostComp2.gameObject.scene.name}' vs target scene '{sceneGo.scene.name}'.";
+                        return false;
+                    }
+                    var comp = sceneGo.GetComponent(sceneExpectedType);
+                    if (comp == null)
+                    {
+                        var available = string.Join(", ", sceneGo.GetComponents<Component>().Select(c => c == null ? "<missing>" : c.GetType().Name));
+                        error = $"GameObject {value} has no {sceneExpectedTypeName} component. Available: {available}.";
+                        return false;
+                    }
+                    obj = comp;
+                    return true;
+                }
+
+                error = $"Field expects {sceneExpectedTypeName} but scene refs can only assign GameObject or Component-derived types.";
                 return false;
             }
 

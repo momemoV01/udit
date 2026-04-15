@@ -256,6 +256,61 @@ namespace UditConnector.Tests
             return ok ? null : (string)args[2];
         }
 
+        // ---------- Scene references ----------
+
+        public class SceneRefHolder : ScriptableObject
+        {
+            public GameObject targetGo;
+            public Camera targetCamera;
+        }
+
+        // Live-smoke only: `SceneRef_AssignsGameObjectToGoField`,
+        // `SceneRef_AutoExtractsComponentFromGo`, and
+        // `SceneRef_RejectsMissingComponent` all need a scene-resident GO
+        // whose GlobalObjectId round-trips through
+        // GlobalObjectIdentifierToObjectSlow. In EditMode tests the GO
+        // has no persistent localFileId until the scene is saved — saving
+        // a test scene on every run is heavy machinery for a feature
+        // better verified end-to-end. The parse-level branch (unknown
+        // stable ID, and the TryResolveObjectReference branch dispatch
+        // itself) is still covered below.
+
+        [Test]
+        public void SceneRef_RejectsUnknownStableId()
+        {
+            var so = ScriptableObject.CreateInstance<SceneRefHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("targetGo");
+
+                var obj = InvokeTryResolveObjectReference(prop, "go:deadbeef", out var err);
+                Assert.IsNull(obj);
+                Assert.IsNotNull(err);
+                Assert.That(err, Does.Contain("GameObject not found"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(so);
+            }
+        }
+
+        // Reflection-invoker for the private TryResolveObjectReference. Same
+        // pattern as the other parsers — tests reach into ManageComponent's
+        // internals so the resolver can be exercised without going through
+        // the full `udit component set` HTTP round-trip.
+        static UnityEngine.Object InvokeTryResolveObjectReference(SerializedProperty prop, string value, out string error)
+        {
+            var m = typeof(ManageComponent).GetMethod(
+                "TryResolveObjectReference",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assert.IsNotNull(m, "TryResolveObjectReference not found — renamed?");
+            var args = new object[] { prop, value, null, null };
+            var ok = (bool)m.Invoke(null, args);
+            error = ok ? null : (string)args[3];
+            return ok ? (UnityEngine.Object)args[2] : null;
+        }
+
         // ---------- Shims for private parser ----------
         //
         // ManageComponent.TryParseAnimationCurve is `static` but private
