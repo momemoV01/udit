@@ -859,5 +859,5 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] v0.8.2 patch — `udit watch --path / --on-change` ad-hoc 모드 (config 없이 one-shot) (2026-04-15)
 - [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
 - [ ] `udit watch --path P --on-change C` — ad-hoc 모드 (config 없이), v0.6.x 증분
-- [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
+- [x] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.9.0, Connector 0.9.0, 2026-04-15) — 첫 connector-side NUnit 테스트 인프라 동반
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)

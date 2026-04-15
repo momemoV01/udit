@@ -350,13 +350,22 @@ udit component copy go:aaaa1111 Rigidbody go:bbbb2222
 | Vector2 / 3 / 4 / Quaternion | 쉼표로 구분한 float (`"x,y"`, `"x,y,z"`, `"x,y,z,w"`) |
 | Color | 0–1 범위 float `"r,g,b[,a]"` 또는 `"#RRGGBB[AA]"` |
 | Enum | display name (`"Solid Color"`) 또는 value index |
-| ObjectReference | 에셋 경로 (`"Assets/Sprites/Player.png"`) 또는 clear는 `"null"` / `"none"` |
+| ObjectReference | 에셋 경로 (`"Assets/Sprites/Player.png"`), **씬 stable ID** (`"go:abcd1234"`, v0.9.0+), 또는 clear는 `"null"` / `"none"` |
+| AnimationCurve (v0.9.0+) | JSON: `{"keys":[{"t":0,"v":0},{"t":1,"v":1}],"preWrap":"ClampForever","postWrap":"ClampForever"}` |
+| Gradient (v0.9.0+) | JSON: `{"colorKeys":[{"t":0,"color":"#000000"},{"t":1,"color":"#FFFFFF"}],"alphaKeys":[{"t":0,"a":1},{"t":1,"a":1}],"mode":"Blend"}` |
+| ManagedReference (v0.9.0+) | JSON: `{"$type":"MyGame.Circle, Assembly-CSharp","radius":5}`, clear는 bare `"null"` |
 
 Transform은 `component set`에서도 **virtual field**를 노출: `position`, `local_position`, `rotation_euler`, `local_rotation_euler`, `local_scale` — 모두 `"x,y,z"`. `component get`이 반환하는 것과 동일하므로 round-trip 가능.
 
-**ObjectReference**는 어떤 프로젝트 에셋 경로든 받음. 서브에셋이 있는 경로(예: `.png`가 `Texture2D` + `Sprite`로 임포트된 경우)는 `component set`이 **타겟 필드 타입에 assign 가능한 첫 서브에셋**을 자동 선택. 해당 경로에 호환되는 에셋이 없으면 `UCI-011` + 기대 타입 + 실제 발견된 타입 표시. 씬 오브젝트 참조(`go:XXXXXXXX`)는 이 버전에서 `component set`으로 쓰기 불가 — `udit exec`로 우회.
+**ObjectReference**는 어떤 프로젝트 에셋 경로든 받음. 서브에셋이 있는 경로(예: `.png`가 `Texture2D` + `Sprite`로 임포트된 경우)는 `component set`이 **타겟 필드 타입에 assign 가능한 첫 서브에셋**을 자동 선택. 해당 경로에 호환되는 에셋이 없으면 `UCI-011` + 기대 타입 + 실제 발견된 타입 표시.
 
-AnimationCurve / Gradient / ExposedReference / ManagedReference은 여전히 **읽기 전용**; set 시 `UCI-011` + 안내 메시지 반환.
+**씬 참조 (v0.9.0+)**는 `go:XXXXXXXX` stable ID로 할당. `GameObject` 타입 필드면 GO 직접 할당. Component 타입 필드(예: `public Camera cam;`)면 `GetComponent<T>()` 자동 추출 — 동일 타입 여러 개면 첫 번째 사용. Cross-scene 참조는 거부 (Inspector의 `preventCrossSceneReferences` 기본 동작과 일치). 프리팹 에셋 / ScriptableObject 에셋 같은 persistent host는 명확한 에러로 거부 — Unity가 리로드 시 strip할 쓰기라서.
+
+**AnimationCurve / Gradient / ManagedReference (v0.9.0+)**는 JSON 값 문자열. `component get`이 동일 shape를 반환해 `get | set` round-trip OK.
+
+ManagedReference 타입 해석은 AQN (`"MyGame.Circle, Assembly-CSharp"`) 우선 시도, 실패 시 short name (`"MyGame.Circle"`) fallback — 필드의 base 타입에서 파생되는 `FullName` 정확히 1개일 때 accept. 모호하면 candidate 목록과 함께 에러 (AQN으로 disambiguate). `[SerializeReference]` nested field는 `JsonUtility.FromJsonOverwrite`가 재귀 안 함 — 바깥 polymorphic instance만 전달; nested는 v0.9.x patch에서.
+
+`ExposedReference`는 v0.9.0에서 여전히 read-only — prefab variant resolution context라 CLI-set 수요 낮음. 요청 있으면 후속 패치.
 
 ### 에셋 쿼리
 

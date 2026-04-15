@@ -4,6 +4,135 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-15
+
+Closes Sprint 2 B3 — the last component-set gap before Public-
+transition prep. `component set` now covers every
+`SerializedPropertyType` an agent realistically encounters editing
+scene/prefab data. Connector bumped to 0.9.0 (significant new
+public surface).
+
+### Added
+
+**Four advanced value types on `udit component set`**:
+
+```bash
+# AnimationCurve
+udit component set go:XXX MyComp curve \
+  '{"keys":[{"t":0,"v":0},{"t":1,"v":1}],"preWrap":"ClampForever","postWrap":"ClampForever"}'
+
+# Gradient
+udit component set go:XXX MyComp grad \
+  '{"colorKeys":[{"t":0,"color":"#000000"},{"t":1,"color":"#FFFFFF"}],"alphaKeys":[{"t":0,"a":1},{"t":1,"a":1}],"mode":"Blend"}'
+
+# Scene GameObject reference (GO field)
+udit component set go:XXX MyComp target go:abcd1234
+
+# Scene Component reference — auto-extracts from GO via GetComponent<T>
+udit component set go:XXX MyComp cam go:abcd1234
+
+# ManagedReference ([SerializeReference] polymorphic field)
+udit component set go:XXX MyComp shape \
+  '{"$type":"MyGame.Circle, Assembly-CSharp","radius":5}'
+udit component set go:XXX MyComp shape '{"$type":"MyGame.Square","side":3}'
+udit component set go:XXX MyComp shape null
+```
+
+**What works**:
+- `component get` reads each new type back in the same JSON shape the
+  setter accepts — `get | set` round-trips cleanly.
+- AnimationCurve `preWrap` / `postWrap` accept Unity's full `WrapMode`
+  enum (Default / Once / Loop / PingPong / ClampForever). Tangents
+  default to 0 (linear).
+- Gradient accepts any `ColorUtility.TryParseHtmlString` color form
+  (hex `#RRGGBB[AA]`, named colors). `mode` accepts Blend / Fixed /
+  PerceptualBlend. 2..8 keys-per-array enforced at parse time.
+- ManagedReference resolves `$type` as AQN first, short-name
+  fallback via `TypeCache.GetTypesDerivedFrom(baseType)` for
+  unambiguous matches. `[MovedFrom]` rewrites handled. Null clear
+  via bare `"" | "null" | "none"` matching ObjectReference.
+- Scene refs: same-scene GO + auto-component-extract on Component
+  fields. Cross-scene reject matches Inspector default. Persistent
+  hosts (prefab assets / ScriptableObject assets) reject scene refs
+  with a clear error.
+- Undo uses `RegisterCompleteObjectUndo` for ManagedReference so
+  Ctrl-Z restores the polymorphic graph cleanly.
+
+### Implementation
+
+- `udit-connector/Editor/Tools/ManageComponent.cs`:
+  * `s_UnsupportedSet` HashSet introduced in the prep commit
+    (212791d); subsequent commits remove one entry each. Post-
+    v0.9.0 the set contains only `ExposedReference`.
+  * `TryParseAnimationCurve` + `TryParseWrapMode`.
+  * `TryParseGradient` + `TryParseGradientMode`. 2..8 keys enforced.
+  * `TryParseManagedReference` + `TryResolveManagedType` —
+    `Type.GetType` → `TypeCache` fallback; Newtonsoft parses the
+    outer envelope and strips `$type`; `FormatterServices.GetUninitializedObject`
+    + `JsonUtility.FromJsonOverwrite` populates fields (Unity's
+    native serialization discipline).
+  * `TryResolveObjectReference`: scene-ref branch replaces the
+    "use exec for now" rejection with a real resolver —
+    `StableIdRegistry.TryResolve` → persistent-host reject →
+    cross-scene reject → GameObject assign OR `GetComponent<T>`
+    auto-extract.
+- `udit-connector/Editor/Tools/Common/SerializedInspect.cs`:
+  * `DescribeAnimationCurve`, `DescribeGradient`, `DescribeManagedReference`
+    replace the `"<AnimationCurve>"` / `"<Gradient>"` / minimal
+    `{type,id}` placeholders with real JSON that matches the
+    setter's input shape.
+  * `ColorToHex` helper for #RRGGBBAA emission.
+- `udit-connector/package.json`: 0.8.1 → 0.9.0.
+- `udit-connector/Tests/Editor/` (new, introduced in prep commit):
+  * `UditConnector.Editor.Tests.asmdef` — Unity Test Framework
+    references + precompiled `nunit.framework.dll` + Unity 6
+    compatible wiring (no `optionalUnityReferences`; direct
+    TestRunner references as per modern Unity packages).
+  * `SentinelTest.cs` — first NUnit fixture to verify the asmdef
+    is discovered by TestRunnerApi.
+  * `ComponentSetAdvancedTests.cs` — 19 ground-truth tests:
+    5 AnimationCurve, 6 Gradient, 6 ManagedReference, 1 scene-ref
+    negative path, SentinelTest itself. Direct `prop.{xxx}Value`
+    reads, not via SerializedInspect, so setter+reader bugs don't
+    mask each other.
+
+### Go-side
+
+No behavioral changes. CLI passes value strings opaquely; the
+tests in `cmd/component_test.go` continue to work unchanged.
+Version bumped to v0.9.0 in sync with the connector.
+
+### Error codes
+
+No new codes. New triggers surface under:
+- `UCI-011 InvalidParams` — malformed JSON, unknown enum name,
+  cross-scene reject, persistent-host reject, missing `$type`.
+- `UCI-042 GameObjectNotFound` — unknown scene stable ID.
+- `UCI-043 ComponentNotFound` — scene GO lacks the expected
+  component type.
+
+### Upgrade notes
+
+`component set` for the four new types requires **Connector ≥ 0.9.0**.
+With an older connector the setter falls into the existing
+"not supported" rejection — no silent failure. Reader changes
+(JSON-shaped get output) also require 0.9.0.
+
+### Limitations (v0.9.x patches if usage demands)
+
+- AnimationCurve tangent modes: v0.9.0 writes explicit tangent
+  values only. ClampedAuto / Free modes (per-keyframe
+  AnimationUtility.SetKeyLeftTangentMode) deferred.
+- Gradient `colorSpace` override: deferred — Unity's default
+  Gamma covers common cases.
+- ManagedReference nested `[SerializeReference]`:
+  JsonUtility.FromJsonOverwrite doesn't recurse into polymorphic
+  children. Assign the outer instance only; nested levels are
+  a later patch.
+- ManagedReference shared-instance graph (`$ref`): every
+  assignment produces a fresh instance.
+- ExposedReference: remains read-only in the unsupported set.
+
 ## [0.8.2] - 2026-04-15
 
 Closes the v0.6.x deferred ad-hoc `watch` mode. `udit watch --path

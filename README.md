@@ -349,13 +349,22 @@ udit component copy go:aaaa1111 Rigidbody go:bbbb2222
 | Vector2 / 3 / 4 / Quaternion | comma-separated floats (`"x,y"`, `"x,y,z"`, `"x,y,z,w"`) |
 | Color | `"r,g,b[,a]"` in 0–1 range, or `"#RRGGBB[AA]"` |
 | Enum | display name (`"Solid Color"`) or value index |
-| ObjectReference | Asset path (`"Assets/Sprites/Player.png"`) or `"null"` / `"none"` to clear |
+| ObjectReference | Asset path (`"Assets/Sprites/Player.png"`), **scene stable ID** (`"go:abcd1234"`, v0.9.0+), or `"null"` / `"none"` to clear |
+| AnimationCurve (v0.9.0+) | JSON: `{"keys":[{"t":0,"v":0},{"t":1,"v":1}],"preWrap":"ClampForever","postWrap":"ClampForever"}` |
+| Gradient (v0.9.0+) | JSON: `{"colorKeys":[{"t":0,"color":"#000000"},{"t":1,"color":"#FFFFFF"}],"alphaKeys":[{"t":0,"a":1},{"t":1,"a":1}],"mode":"Blend"}` |
+| ManagedReference (v0.9.0+) | JSON: `{"$type":"MyGame.Circle, Assembly-CSharp","radius":5}`, or bare `"null"` to clear |
 
 Transform exposes **virtual fields** for world + local coordinates on `component set` as well: `position`, `local_position`, `rotation_euler`, `local_rotation_euler`, `local_scale` — all take `"x,y,z"`. This matches what `component get` returns, so round-tripping works.
 
-**ObjectReference** accepts any project asset path. If the path has sub-assets (e.g. a `.png` imported with both `Texture2D` and `Sprite`), `component set` auto-picks the first sub-asset assignable to the target field's type. For fields with no compatible asset at the given path, you get `UCI-011` with the expected type and what was actually found at that path. Scene object references (`go:XXXXXXXX`) are not writable through `component set` in this version — fall back to `udit exec` for those.
+**ObjectReference** accepts any project asset path. If the path has sub-assets (e.g. a `.png` imported with both `Texture2D` and `Sprite`), `component set` auto-picks the first sub-asset assignable to the target field's type. For fields with no compatible asset at the given path, you get `UCI-011` with the expected type and what was actually found at that path.
 
-AnimationCurve / Gradient / ExposedReference / ManagedReference are still **read-only** in this version; attempting to set them returns `UCI-011` with guidance.
+**Scene references (v0.9.0+)** via `go:XXXXXXXX` stable IDs. For `GameObject`-typed fields, assigns the GO directly. For Component-typed fields (e.g. `public Camera cam;`), auto-extracts via `GetComponent<T>()` — first wins when the GO has multiple components of the same type. Cross-scene references are rejected (matches Inspector behavior under `preventCrossSceneReferences`). Persistent hosts (prefab assets, ScriptableObject assets) reject scene refs with a clear error — Unity would strip such writes on reload.
+
+**AnimationCurve / Gradient / ManagedReference (v0.9.0+)** accept a JSON value string. `component get` echoes the same shape back so `get | set` round-trips cleanly.
+
+ManagedReference type resolution tries the assembly-qualified name first (e.g. `"MyGame.Circle, Assembly-CSharp"`), then falls back to a short name (`"MyGame.Circle"`) when exactly one type with that `FullName` derives from the field's declared base. Ambiguous short names error with the full candidate list so the agent can disambiguate via AQN. `[SerializeReference]` nested fields are not recursed by `JsonUtility.FromJsonOverwrite` — pass the outer polymorphic instance only; nested polymorphic children are a v0.9.x patch if usage demands.
+
+`ExposedReference` remains read-only in v0.9.0 — different concept (prefab variant resolution context) unlikely to be CLI-set. Will ship if demand surfaces.
 
 ### Assets
 
