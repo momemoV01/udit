@@ -2,6 +2,8 @@ package watch
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -302,6 +304,60 @@ func TestCircuitBreaker_SlidingWindow(t *testing.T) {
 	b.recordFire()
 	if !b.recordFire() {
 		t.Errorf("3rd in-window fire should trip breaker")
+	}
+}
+
+// Once tripped, recordFire returns false (don't re-log) and tripped()
+// stays true until Reset is called. Reset clears the history, letting
+// the breaker be reused — relevant for a future `watch reload`.
+func TestCircuitBreaker_Reset(t *testing.T) {
+	clk := newFakeClock()
+	b := newBreaker(clk, 2, time.Second)
+
+	b.recordFire()
+	if !b.recordFire() {
+		t.Fatal("2nd fire should trip a threshold=2 breaker")
+	}
+	if !b.tripped() {
+		t.Fatal("breaker should be tripped")
+	}
+	// Further fires while tripped must not re-trip (returns false).
+	if b.recordFire() {
+		t.Errorf("recordFire on tripped breaker should return false (already tripped)")
+	}
+
+	// Reset brings it back to virgin state.
+	b.Reset()
+	if b.tripped() {
+		t.Error("tripped() still true after Reset")
+	}
+	// And the breaker is usable again.
+	if b.recordFire() {
+		t.Error("1st fire after Reset shouldn't trip")
+	}
+	if !b.recordFire() {
+		t.Error("2nd fire after Reset should trip again")
+	}
+}
+
+// WrapExecError is used by cmd/watch.go to stamp a hook name onto an
+// executor error. nil in, nil out; anything else gets wrapped so the
+// caller can still errors.Is / errors.Unwrap the original.
+func TestWrapExecError(t *testing.T) {
+	if err := WrapExecError("compile", nil); err != nil {
+		t.Errorf("nil input should return nil, got %v", err)
+	}
+
+	orig := errors.New("exit status 1")
+	wrapped := WrapExecError("compile", orig)
+	if wrapped == nil {
+		t.Fatal("non-nil input must produce non-nil error")
+	}
+	if !strings.Contains(wrapped.Error(), "hook compile:") {
+		t.Errorf("message should name the hook; got %q", wrapped.Error())
+	}
+	if !errors.Is(wrapped, orig) {
+		t.Errorf("wrapped error must unwrap to the original (errors.Is)")
 	}
 }
 
