@@ -560,6 +560,13 @@ udit build player --target android --output builds/app.apk \
     --scenes Assets/Scenes/Main.unity,Assets/Scenes/Boot.unity
 udit build player --target win64 --output builds/dev/ --development
 
+# v0.7.1+: 이번 빌드만 IL2CPP로 임시 전환
+udit build player --target win64 --output builds/il2cpp/ --il2cpp
+
+# v0.7.1+: .udit.yaml의 preset 사용
+udit build player --config production
+udit build player --config production --output builds/custom/ --development
+
 # Addressables (com.unity.addressables 패키지 필요)
 udit build addressables
 udit build addressables --profile MobileRelease
@@ -571,6 +578,23 @@ udit build cancel
 `build targets`는 모든 `BuildTarget` enum을 순회해 `{ name, group, supported }` 항목 + active 타겟 + supported_count를 반환. `supported`는 현재 에디터 설치본의 `BuildPipeline.IsBuildTargetSupported` 결과 — 에이전트가 `build player` 시도 전 이 값으로 필터해야.
 
 `build player`는 `BuildPipeline.BuildPlayer` 래퍼. `--target`은 alias (`win64` / `win32` / `mac` / `linux` / `android` / `ios` / `webgl`) + full enum 이름 (`StandaloneWindows64` 등) 모두 수용. `--output` 상대경로는 CLI cwd 기준 해석 (`test --output` / `screenshot --output_path`와 동일 관례), 부모 디렉토리는 자동 생성. `--scenes`는 콤마 구분 리스트 — 미명시면 Build Settings의 enabled scene 사용 (File > Build Settings 동작 동일). `--development`는 `BuildOptions.Development`. CLI는 `build player`에 무한 timeout 사용 — 글로벌 `--timeout`이 빌드 도중 발동하지 않음.
+
+**v0.7.1+**: `--il2cpp` / `--no-il2cpp`는 이번 빌드에 한해 `PlayerSettings.ScriptingBackend`를 IL2CPP (또는 Mono)로 임시 전환. 플립 전 backend 캡처 후 `finally`에서 복원 — best-effort (에디터가 빌드 중 크래시하면 복원 실패). `--config <preset>`은 `.udit.yaml`의 `build.targets.<preset>`에서 기본값 로드; CLI flag은 preset field를 항상 override. Preset 스키마:
+
+```yaml
+build:
+  targets:
+    production:
+      target: win64
+      output: Build/prod/MyGame.exe
+      scenes: [Assets/Scenes/Main.unity]
+      il2cpp: true
+      development: false
+    dev:
+      target: win64
+      output: Build/dev/MyGame.exe
+      development: true
+```
 
 응답은 `BuildReport` summary 전체: `{ result, platform, output_path, total_size, total_errors, total_warnings, duration_sec, build_started_at, build_ended_at, steps_count, scenes_count }`. 실패/취소 빌드는 같은 payload를 가진 `ErrorResponse`로 — 호출자가 다른 shape 파싱 불필요.
 

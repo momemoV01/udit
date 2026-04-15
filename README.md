@@ -560,6 +560,13 @@ udit build player --target android --output builds/app.apk \
     --scenes Assets/Scenes/Main.unity,Assets/Scenes/Boot.unity
 udit build player --target win64 --output builds/dev/ --development
 
+# v0.7.1+: temporarily flip scripting backend to IL2CPP for this build only
+udit build player --target win64 --output builds/il2cpp/ --il2cpp
+
+# v0.7.1+: load build defaults from .udit.yaml
+udit build player --config production
+udit build player --config production --output builds/custom/ --development
+
 # Addressables (requires com.unity.addressables in the project)
 udit build addressables
 udit build addressables --profile MobileRelease
@@ -571,6 +578,23 @@ udit build cancel
 `build targets` walks every `BuildTarget` enum value and reports `{ name, group, supported }` per entry, plus the active target and supported_count totals. `supported` is `BuildPipeline.IsBuildTargetSupported` against the current Editor install — agents should filter on this before attempting `build player`.
 
 `build player` wraps `BuildPipeline.BuildPlayer`. `--target` accepts friendly aliases (`win64`, `win32`, `mac`, `linux`, `android`, `ios`, `webgl`) plus any full enum name (`StandaloneWindows64`, `StandaloneOSX`, etc.). `--output` resolves relative paths against the CLI's cwd (same convention as `test --output` and `screenshot --output_path`); the parent directory is created if missing. `--scenes` is a comma-separated list — when omitted, the enabled scenes from Build Settings are used, matching what the Build Settings dialog does. `--development` enables `BuildOptions.Development`. The CLI uses an infinite timeout for `build player` so the agent's global `--timeout` doesn't fire mid-build.
+
+**v0.7.1+**: `--il2cpp` / `--no-il2cpp` temporarily flips `PlayerSettings.ScriptingBackend` to IL2CPP (or back to Mono) for just this build. The previous backend is captured before the flip and restored in `finally` — best-effort (if the Editor crashes mid-build the restore never runs). `--config <preset>` loads defaults from `.udit.yaml`'s `build.targets.<preset>`; CLI flags always override preset fields. Preset schema:
+
+```yaml
+build:
+  targets:
+    production:
+      target: win64
+      output: Build/prod/MyGame.exe
+      scenes: [Assets/Scenes/Main.unity]
+      il2cpp: true
+      development: false
+    dev:
+      target: win64
+      output: Build/dev/MyGame.exe
+      development: true
+```
 
 The response carries the full `BuildReport` summary: `{ result, platform, output_path, total_size, total_errors, total_warnings, duration_sec, build_started_at, build_ended_at, steps_count, scenes_count }`. Failed/Cancelled builds return as `ErrorResponse` with the same payload — caller doesn't need to parse a different shape.
 

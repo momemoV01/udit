@@ -478,6 +478,8 @@ Builds:
   build targets                    List BuildTargets (with supported flag)
   build player --target <X> --output <dir> [--scenes a,b,c] [--development]
                                    Build a standalone player (long-running)
+  build player --il2cpp            Flip scripting backend to IL2CPP for this build
+  build player --config <name>     Use a preset from .udit.yaml (build.targets.<name>)
   build addressables [--profile X] Build Addressables content (requires com.unity.addressables)
   build cancel                     Cancel an in-progress build
 
@@ -1171,6 +1173,28 @@ Subcommands:
           Sets BuildOptions.Development. Smaller, debuggable builds
           for testing.
 
+      --il2cpp / --no-il2cpp
+          Temporarily flip PlayerSettings.ScriptingBackend to IL2CPP
+          (or back to Mono) for this build only. The previous backend
+          is captured before the flip and restored in finally, so
+          Mono-only projects don't inherit a permanent IL2CPP
+          setting. Caveat: if the Editor crashes mid-build the restore
+          never runs and PlayerSettings is left in the flipped state —
+          best-effort.
+
+      --config <preset>
+          Load build defaults from .udit.yaml's ` + "`build.targets.<preset>`" + `.
+          CLI flags always override preset fields. Preset schema:
+
+            build:
+              targets:
+                production:
+                  target: win64
+                  output: Build/prod/MyGame.exe
+                  scenes: [Assets/Scenes/Main.unity]
+                  il2cpp: true
+                  development: false
+
       Response carries the BuildReport summary: result (Succeeded /
       Failed / Cancelled), platform, output_path, total_size,
       total_errors, total_warnings, duration_sec, build_started_at,
@@ -1200,6 +1224,9 @@ Examples:
   udit build player --target android --output builds/app.apk \
       --scenes Assets/Scenes/Main.unity,Assets/Scenes/Boot.unity \
       --development
+  udit build player --target win64 --output builds/win64/ --il2cpp
+  udit build player --config production
+  udit build player --config production --output builds/custom/ --development
   udit build addressables
   udit build addressables --profile MobileRelease
   udit build cancel

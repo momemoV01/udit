@@ -803,6 +803,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | Ring buffer 2000 entries + 4-case `--since` semantic 명시 | 크기 2000은 5~10분 수다스러운 편집기 출력에 충분. overflow 시 drop-oldest + `dropped` marker. `--since` 4 케이스 (not passed / window 충분 / 부분만 + `truncated` marker / buffer 비어있음)를 설계 문서에 명시 — client 측 timeline 추측 필요 없음. Multi-client fanout은 per-client cursor + 각 tick 당 per-client write cap (500) 으로 log-storm 중 Editor 멈춤 방지 |
 | 2026-04-15 | Reconnect success rule: ≥5s 연결 + 1 frame 수신 or reload marker 수신 | 단순 "TCP open이면 success" 규칙은 "open-then-EOF in 200ms" 케이스 (Unity 크래시 중)에서 busy loop. `lastSuccessfulReadAt` + 5초 threshold로 "정말 붙었었나" 판정. `event: reload` 수신은 backoff 1s로 reset — 이건 Unity의 정상 재시작 신호. 1s → 2s → 4s cap 스케줄 |
 | 2026-04-15 | UCI-004/006/007 신설, `retryable` 필드 단일화 | `StreamInterrupted` (UCI-004, 재시도 가능) 는 `ConnectionRefused` (UCI-002, 사용자 개입 필요)와 구분 필요. `InvalidStreamFilter` (UCI-006)는 400 응답, `ConnectorTooOld` (UCI-007)는 Content-Type 불일치 — version skew 즉시 abort 해야 reconnect loop busy 안 돔. retryable 속성은 code별 분리 대신 응답 field로 — 미래 증분 에러 코드가 split될 위험 제거 |
+| 2026-04-15 | `build --il2cpp` — 임시 set + finally restore, 크래시 시 best-effort만 (v0.7.1) | 대안: IL2CPP 프로젝트를 VCS에 영구 고정 — agent 요청마다 PlayerSettings.asset diff 발생해 에디터 작업과 충돌. 채택: `SetScriptingBackend(IL2CPP)` 빌드 직전 + `try/finally`로 이전 backend 복원. `NamedBuildTarget.FromBuildTargetGroup(buildOptions.targetGroup)`로 target-specific (다른 플랫폼 설정 영향 X). **제한**: Unity 프로세스 크래시 시 finally 실행 안 됨 → PlayerSettings가 IL2CPP 상태로 남음. 문서에 명시, 재실행으로 회복 |
+| 2026-04-15 | `build --config <name>` — 별도 namespace 아니라 기존 watch와 동일 yaml에 `build.targets.<name>` (v0.7.1) | 대안: `.udit.buildconfig.yaml` 별도 파일. 채택: 같은 `.udit.yaml`에 `build:` 섹션. Phase 5.1 watch가 확립한 yaml 스키마 확장 패턴 재사용 — 사용자는 설정 파일 하나만 관리. CLI flag이 preset field를 항상 override: `--config production --output custom/` 허용. Preset field가 pointer (`*bool`)로 "미설정" vs "명시적 false" 구분. 모름 preset 이름 요청 시 에러 메시지에 `Available:` 리스트 포함 — 사용자가 다음 시도에 바로 수정 가능 |
 
 ---
 
@@ -850,6 +852,7 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] v0.6.4 patch — `udit watch` config 해석도 **연결된 Unity instance** 계층 추가 (init과 동일 4단 체인) (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
 - [x] **Phase 5.2 착수 — `log tail -f` SSE 스트리밍** (2026-04-15) — Connector 0.8.0, `/logs/stream` endpoint + `Application.logMessageReceived` subscription + ring buffer + multi-client fanout + 도메인 리로드 재접속 + NDJSON/color 출력
+- [x] v0.7.1 patch — `build player --il2cpp` + `build player --config <name>` (Phase 4c 때 보류했던 것, Connector 0.8.1) (2026-04-15)
 - [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
 - [ ] `udit watch --path P --on-change C` — ad-hoc 모드 (config 없이), v0.6.x 증분
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)

@@ -215,3 +215,196 @@ func TestSplitTrim_AllEmpty(t *testing.T) {
 		t.Errorf("all-empty input should return empty slice, got %v", got)
 	}
 }
+
+// --- --il2cpp flag ------------------------------------------------------
+
+func TestBuildCmd_PlayerIL2CPPFlag(t *testing.T) {
+	send, params := mockSend("manage_build", t)
+	_, err := buildCmd([]string{
+		"player", "--target", "win64", "--output", "/tmp/build", "--il2cpp",
+	}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if (*params)["il2cpp"] != true {
+		t.Errorf("il2cpp: got %v, want true", (*params)["il2cpp"])
+	}
+}
+
+func TestBuildCmd_PlayerNoIL2CPPFlagOmitsKey(t *testing.T) {
+	// Without --il2cpp (and without a preset), we don't send the key —
+	// lets Unity use the project's current PlayerSettings.
+	send, params := mockSend("manage_build", t)
+	_, err := buildCmd([]string{
+		"player", "--target", "win64", "--output", "/tmp/build",
+	}, send)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, set := (*params)["il2cpp"]; set {
+		t.Errorf("il2cpp should be omitted when not requested, got %v", (*params)["il2cpp"])
+	}
+}
+
+// --- preset resolution --------------------------------------------------
+
+func TestResolveBuildPreset_NoConfig(t *testing.T) {
+	prev := loadedConfig
+	loadedConfig = nil
+	defer func() { loadedConfig = prev }()
+
+	_, err := resolveBuildPreset("production")
+	if err == nil || !strings.Contains(err.Error(), "udit init") {
+		t.Errorf("expected 'udit init' hint, got %v", err)
+	}
+}
+
+func TestResolveBuildPreset_NoTargetsSection(t *testing.T) {
+	prev := loadedConfig
+	loadedConfig = &Config{}
+	defer func() { loadedConfig = prev }()
+
+	_, err := resolveBuildPreset("production")
+	if err == nil || !strings.Contains(err.Error(), "build.targets") {
+		t.Errorf("expected 'build.targets' hint, got %v", err)
+	}
+}
+
+func TestResolveBuildPreset_UnknownListsAvailable(t *testing.T) {
+	prev := loadedConfig
+	loadedConfig = &Config{
+		Build: BuildCfg{
+			Targets: map[string]BuildPreset{
+				"production": {Target: "win64"},
+				"dev":        {Target: "linux"},
+			},
+		},
+	}
+	defer func() { loadedConfig = prev }()
+
+	_, err := resolveBuildPreset("staging")
+	if err == nil {
+		t.Fatalf("expected error for unknown preset")
+	}
+	for _, wanted := range []string{"Available:", "production", "dev"} {
+		if !strings.Contains(err.Error(), wanted) {
+			t.Errorf("error should mention %q, got %v", wanted, err)
+		}
+	}
+}
+
+func TestResolveBuildPreset_Found(t *testing.T) {
+	trueV := true
+	prev := loadedConfig
+	loadedConfig = &Config{
+		Build: BuildCfg{
+			Targets: map[string]BuildPreset{
+				"production": {Target: "win64", Output: "Build/p.exe", IL2CPP: &trueV},
+			},
+		},
+	}
+	defer func() { loadedConfig = prev }()
+
+	p, err := resolveBuildPreset("production")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if p.Target != "win64" || p.IL2CPP == nil || !*p.IL2CPP {
+		t.Errorf("unexpected preset: %+v", p)
+	}
+}
+
+// --- preset / flag merge ------------------------------------------------
+
+func TestBuildCmd_PresetCarriesFields(t *testing.T) {
+	trueV, falseV := true, false
+	prev := loadedConfig
+	loadedConfig = &Config{
+		Build: BuildCfg{
+			Targets: map[string]BuildPreset{
+				"production": {
+					Target:      "win64",
+					Output:      "Build/prod/MyGame.exe",
+					Scenes:      []string{"Assets/Scenes/Main.unity"},
+					IL2CPP:      &trueV,
+					Development: &falseV,
+				},
+			},
+		},
+	}
+	defer func() { loadedConfig = prev }()
+
+	send, params := mockSend("manage_build", t)
+	_, err := buildCmd([]string{"player", "--config", "production"}, send)
+	if err != nil {
+		t.Fatalf("buildCmd: %v", err)
+	}
+	if (*params)["target"] != "win64" {
+		t.Errorf("target: %v", (*params)["target"])
+	}
+	if (*params)["il2cpp"] != true {
+		t.Errorf("il2cpp: %v", (*params)["il2cpp"])
+	}
+	if (*params)["development"] != false {
+		t.Errorf("development: %v", (*params)["development"])
+	}
+	scenes, ok := (*params)["scenes"].([]string)
+	if !ok || len(scenes) != 1 || scenes[0] != "Assets/Scenes/Main.unity" {
+		t.Errorf("scenes: %v", (*params)["scenes"])
+	}
+}
+
+func TestBuildCmd_FlagOverridesPreset(t *testing.T) {
+	trueV, falseV := true, false
+	prev := loadedConfig
+	loadedConfig = &Config{
+		Build: BuildCfg{
+			Targets: map[string]BuildPreset{
+				"production": {
+					Target:      "win64",
+					Output:      "Build/prod/MyGame.exe",
+					IL2CPP:      &trueV,
+					Development: &falseV,
+				},
+			},
+		},
+	}
+	defer func() { loadedConfig = prev }()
+
+	send, params := mockSend("manage_build", t)
+	_, err := buildCmd([]string{
+		"player", "--config", "production",
+		"--output", "Build/custom/x.exe",
+		"--development",
+		"--no-il2cpp",
+	}, send)
+	if err != nil {
+		t.Fatalf("buildCmd: %v", err)
+	}
+	out, _ := (*params)["output"].(string)
+	if !strings.HasSuffix(out, "x.exe") {
+		t.Errorf("output should be the flag, got %q", out)
+	}
+	if (*params)["development"] != true {
+		t.Errorf("development should be overridden to true, got %v", (*params)["development"])
+	}
+	if (*params)["il2cpp"] != false {
+		t.Errorf("--no-il2cpp should force false, got %v", (*params)["il2cpp"])
+	}
+}
+
+func TestBuildCmd_UnknownPresetErrors(t *testing.T) {
+	prev := loadedConfig
+	loadedConfig = &Config{
+		Build: BuildCfg{
+			Targets: map[string]BuildPreset{"dev": {Target: "linux", Output: "Build/x"}},
+		},
+	}
+	defer func() { loadedConfig = prev }()
+
+	send, _ := mockSend("manage_build", t) // should not actually be hit
+	_, err := buildCmd([]string{"player", "--config", "missing"}, send)
+	if err == nil {
+		t.Fatalf("expected error for missing preset")
+	}
+}

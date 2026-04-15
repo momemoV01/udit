@@ -198,6 +198,58 @@ func TestLoadConfig_ParsesWatchSection(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ParsesBuildSection(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	cfgPath := filepath.Join(dir, ".udit.yaml")
+	if err := os.WriteFile(cfgPath, []byte(`build:
+  targets:
+    production:
+      target: win64
+      output: Build/prod/MyGame.exe
+      scenes:
+        - Assets/Scenes/Boot.unity
+        - Assets/Scenes/Main.unity
+      il2cpp: true
+      development: false
+    dev:
+      target: win64
+      output: Build/dev/MyGame.exe
+      development: true
+`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cfg, _ := LoadConfig(dir)
+	if cfg == nil {
+		t.Fatalf("expected cfg")
+	}
+	if len(cfg.Build.Targets) != 2 {
+		t.Fatalf("Targets: got %d, want 2", len(cfg.Build.Targets))
+	}
+	prod, ok := cfg.Build.Targets["production"]
+	if !ok {
+		t.Fatalf("missing 'production' preset")
+	}
+	if prod.Target != "win64" || prod.Output != "Build/prod/MyGame.exe" {
+		t.Errorf("production fields: %+v", prod)
+	}
+	if len(prod.Scenes) != 2 {
+		t.Errorf("production scenes: %v", prod.Scenes)
+	}
+	if prod.IL2CPP == nil || !*prod.IL2CPP {
+		t.Errorf("production il2cpp: %v", prod.IL2CPP)
+	}
+	if prod.Development == nil || *prod.Development {
+		t.Errorf("production development: %v", prod.Development)
+	}
+	dev := cfg.Build.Targets["dev"]
+	if dev.IL2CPP != nil {
+		t.Errorf("dev il2cpp should be unset (nil), got %v", *dev.IL2CPP)
+	}
+}
+
 func TestLoadConfig_EmptyWatchSectionOK(t *testing.T) {
 	// No watch: key ⇒ zero-value WatchCfg, Validate returns error on
 	// Validate() (no hooks), but LoadConfig itself must not fail.

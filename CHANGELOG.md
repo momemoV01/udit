@@ -4,6 +4,98 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-04-15
+
+Clears the two `build player` options deferred in Phase 4c (v0.5.0).
+No new command surface — just `build player` gains `--il2cpp` /
+`--no-il2cpp` and `--config <preset>` on top of what v0.5.0 shipped.
+
+Connector bumped to **0.8.1** — adds IL2CPP scripting-backend set/restore
+inside `ManageBuild`. Same pipeline otherwise; no protocol changes.
+
+### Added
+
+**`udit build player --il2cpp` / `--no-il2cpp`**
+
+Temporarily flip `PlayerSettings.ScriptingBackend` to IL2CPP (or back to
+Mono) for the duration of one build. The previous backend is captured
+before the flip and restored in `finally`, so Mono-only projects don't
+inherit a permanent IL2CPP setting.
+
+- Scoped to the build's `NamedBuildTarget` (`FromBuildTargetGroup(
+  buildOptions.targetGroup)`), so flipping to IL2CPP for a Windows
+  build does not touch Android or iOS scripting backends.
+- If the backend is already IL2CPP (or the caller passes `--il2cpp`
+  with an already-IL2CPP project), no flip + no restore — the asset
+  is untouched.
+- **Caveat**: if the Editor crashes mid-build the `finally` never
+  runs and `ProjectSettings.asset` is left in the flipped state.
+  Best-effort; a manual revert from VCS recovers, or re-run with
+  the desired backend.
+
+**`udit build player --config <preset>`**
+
+Load build defaults from `.udit.yaml`'s new `build.targets.<preset>`
+section; CLI flags always override preset fields.
+
+```yaml
+build:
+  targets:
+    production:
+      target: win64
+      output: Build/prod/MyGame.exe
+      scenes: [Assets/Scenes/Boot.unity, Assets/Scenes/Main.unity]
+      il2cpp: true
+      development: false
+    dev:
+      target: win64
+      output: Build/dev/MyGame.exe
+      development: true
+```
+
+```bash
+udit build player --config production
+udit build player --config production --output Build/custom/x.exe
+udit build player --config production --no-il2cpp  # override preset
+```
+
+Unknown preset names get an error that lists `Available:` presets —
+actionable in one cycle rather than requiring the user to open yaml.
+
+### Implementation
+
+- `udit-connector/Editor/Tools/ManageBuild.cs`:
+  * Imports `UnityEditor.Build` for `NamedBuildTarget`.
+  * New `il2cpp` param processed after the BuildPlayerOptions build.
+  * `SetScriptingBackend` wrapped in try/finally; initial capture
+    stores the previous backend only if a flip actually happened.
+- `udit-connector/package.json`: 0.8.0 → 0.8.1.
+- `cmd/build.go`:
+  * `BuildCfg` + `BuildPreset` types (defined in-package; not
+    extracted to `internal/` because the yaml-parse-and-merge logic
+    lives next to the command that consumes it).
+  * `resolveBuildPreset(name)` — looks up a preset with helpful
+    error messages: "no .udit.yaml loaded" / "no build.targets"
+    / "no such preset. Available: …".
+  * `pickString(...)` helper drives the layered merge: CLI flag
+    wins over preset field, preset field wins over default.
+  * `--il2cpp` / `--no-il2cpp` and `--development` / `--no-development`
+    flag pairs so explicit override is distinguishable from absent.
+- `cmd/config.go`: `Config` struct gains `Build BuildCfg`.
+- `cmd/root.go`: overview help + `printTopicHelp("build")` cover the
+  two new flags. Preset schema example inline.
+- Test coverage: preset parse, preset resolution (no cfg / no
+  section / unknown preset / found), CLI+preset merge, explicit
+  `--no-il2cpp` overrides preset `il2cpp: true`, plain `--il2cpp`
+  without a preset.
+
+### Upgrade notes
+
+`--il2cpp` requires **Connector ≥ 0.8.1**. With an older connector
+the param is silently ignored (connector's ToolParams unpacker
+drops unknown keys). Upgrade the UPM package to get the actual
+behavior.
+
 ## [0.7.0] - 2026-04-15
 
 Phase 5.2 lands. `udit log tail` — a long-lived SSE stream of Unity

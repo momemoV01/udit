@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -167,15 +168,58 @@ namespace UditConnector.Tools
                 options = options,
             };
 
+            // Scripting backend override — temporary switch to IL2CPP for the
+            // duration of this build. The previous backend is captured before
+            // the flip and restored in finally so Mono-only projects don't
+            // inherit a permanent IL2CPP setting. Caveat: if the Editor
+            // crashes mid-build the restore never runs and PlayerSettings is
+            // left in the IL2CPP state — documented as a best-effort behavior.
+            var wantIl2cpp = p.GetBool("il2cpp", false);
+            NamedBuildTarget namedTarget = default;
+            ScriptingImplementation? previousBackend = null;
+            if (wantIl2cpp)
+            {
+                try
+                {
+                    namedTarget = NamedBuildTarget.FromBuildTargetGroup(buildOptions.targetGroup);
+                    previousBackend = PlayerSettings.GetScriptingBackend(namedTarget);
+                    if (previousBackend.Value != ScriptingImplementation.IL2CPP)
+                    {
+                        PlayerSettings.SetScriptingBackend(namedTarget, ScriptingImplementation.IL2CPP);
+                    }
+                    else
+                    {
+                        // Already IL2CPP — no flip needed, skip restore too.
+                        previousBackend = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new ErrorResponse(ErrorCodes.InvalidParams,
+                        $"Could not switch scripting backend to IL2CPP: {ex.Message}");
+                }
+            }
+
             BuildReport report;
             try
             {
-                report = BuildPipeline.BuildPlayer(buildOptions);
+                try
+                {
+                    report = BuildPipeline.BuildPlayer(buildOptions);
+                }
+                catch (Exception ex)
+                {
+                    return new ErrorResponse(ErrorCodes.InvalidParams,
+                        $"BuildPipeline.BuildPlayer threw: {ex.Message}");
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                return new ErrorResponse(ErrorCodes.InvalidParams,
-                    $"BuildPipeline.BuildPlayer threw: {ex.Message}");
+                if (previousBackend.HasValue)
+                {
+                    try { PlayerSettings.SetScriptingBackend(namedTarget, previousBackend.Value); }
+                    catch { /* best-effort; ProjectSettings.asset may be dirty in VCS either way */ }
+                }
             }
 
             var summary = report.summary;

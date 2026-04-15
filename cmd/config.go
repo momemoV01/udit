@@ -20,6 +20,7 @@ type Config struct {
 	DefaultTimeoutMs int            `yaml:"default_timeout_ms"`
 	Exec             ExecCfg        `yaml:"exec"`
 	Watch            watch.WatchCfg `yaml:"watch"`
+	Build            BuildCfg       `yaml:"build"`
 }
 
 type ExecCfg struct {
