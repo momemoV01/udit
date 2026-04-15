@@ -143,7 +143,7 @@ namespace UditConnector.Tools.Common
                 case SerializedPropertyType.ArraySize:     return p.intValue;
                 case SerializedPropertyType.LayerMask:     return p.intValue;
                 case SerializedPropertyType.AnimationCurve: return DescribeAnimationCurve(p.animationCurveValue);
-                case SerializedPropertyType.Gradient:       return "<Gradient>";
+                case SerializedPropertyType.Gradient:       return DescribeGradient(p.gradientValue);
                 case SerializedPropertyType.Character:     return p.intValue;
                 case SerializedPropertyType.Vector2Int:    return new { x = p.vector2IntValue.x, y = p.vector2IntValue.y };
                 case SerializedPropertyType.Vector3Int:    return new { x = p.vector3IntValue.x, y = p.vector3IntValue.y, z = p.vector3IntValue.z };
@@ -258,6 +258,46 @@ namespace UditConnector.Tools.Common
                 preWrap = curve.preWrapMode.ToString(),
                 postWrap = curve.postWrapMode.ToString(),
             };
+        }
+
+        /// <summary>
+        /// Renders a Gradient in the same JSON shape `component set
+        /// &lt;field&gt; grad &lt;value&gt;` accepts. Colors emit as
+        /// `#RRGGBBAA` hex strings — compact and parseable by
+        /// ColorUtility.TryParseHtmlString on the write path.
+        /// </summary>
+        internal static object DescribeGradient(Gradient gradient)
+        {
+            if (gradient == null) return null;
+            var ck = gradient.colorKeys ?? new GradientColorKey[0];
+            var ak = gradient.alphaKeys ?? new GradientAlphaKey[0];
+            var colorObjs = new object[ck.Length];
+            for (int i = 0; i < ck.Length; i++)
+            {
+                colorObjs[i] = new { t = ck[i].time, color = ColorToHex(ck[i].color) };
+            }
+            var alphaObjs = new object[ak.Length];
+            for (int i = 0; i < ak.Length; i++)
+            {
+                alphaObjs[i] = new { t = ak[i].time, a = ak[i].alpha };
+            }
+            return new
+            {
+                colorKeys = colorObjs,
+                alphaKeys = alphaObjs,
+                mode = gradient.mode.ToString(),
+            };
+        }
+
+        static string ColorToHex(Color c)
+        {
+            // Clamp to [0..1] before the 0..255 conversion — gradient keys
+            // could in theory hold HDR values; the hex encoding is LDR.
+            int R = Mathf.Clamp(Mathf.RoundToInt(c.r * 255f), 0, 255);
+            int G = Mathf.Clamp(Mathf.RoundToInt(c.g * 255f), 0, 255);
+            int B = Mathf.Clamp(Mathf.RoundToInt(c.b * 255f), 0, 255);
+            int A = Mathf.Clamp(Mathf.RoundToInt(c.a * 255f), 0, 255);
+            return $"#{R:X2}{G:X2}{B:X2}{A:X2}";
         }
 
         static object V2(Vector2 v) => new { x = v.x, y = v.y };

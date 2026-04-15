@@ -21,7 +21,6 @@ namespace UditConnector.Tools
         // variant resolution context — likely never set this way from CLI).
         static readonly System.Collections.Generic.HashSet<SerializedPropertyType> s_UnsupportedSet = new()
         {
-            SerializedPropertyType.Gradient,
             SerializedPropertyType.ManagedReference,
             SerializedPropertyType.ExposedReference,
         };
@@ -897,6 +896,14 @@ namespace UditConnector.Tools
                         return true;
                     }
 
+                case SerializedPropertyType.Gradient:
+                    {
+                        oldJsonValue = SerializedInspect.DescribeGradient(prop.gradientValue);
+                        if (!TryParseGradient(value, out _, out var perr))
+                        { error = perr; return false; }
+                        return true;
+                    }
+
                 default:
                     {
                         var unsupportedNames = string.Join(", ", s_UnsupportedSet);
@@ -974,6 +981,10 @@ namespace UditConnector.Tools
                 case SerializedPropertyType.AnimationCurve:
                     if (TryParseAnimationCurve(value, out var curve, out _))
                         prop.animationCurveValue = curve;
+                    break;
+                case SerializedPropertyType.Gradient:
+                    if (TryParseGradient(value, out var gradient, out _))
+                        prop.gradientValue = gradient;
                     break;
             }
         }
@@ -1206,6 +1217,103 @@ namespace UditConnector.Tools
                 return true;
             }
             error = $"Unknown WrapMode '{s}'. Accepted: Default, Once, Loop, PingPong, ClampForever.";
+            return false;
+        }
+
+        /// <summary>
+        /// Parse a Gradient JSON value. Shape:
+        ///   { "colorKeys":[{"t":0,"color":"#RRGGBB[AA]"}],
+        ///     "alphaKeys":[{"t":0,"a":1}],
+        ///     "mode":"Blend" }
+        /// Unity requires 2–8 keys per array; violations produce a clear error.
+        /// </summary>
+        static bool TryParseGradient(string json, out Gradient gradient, out string error)
+        {
+            gradient = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                error = "Gradient: empty value. Expected JSON { \"colorKeys\": [...], \"alphaKeys\": [...] }.";
+                return false;
+            }
+            JObject obj;
+            try { obj = JObject.Parse(json); }
+            catch (System.Exception ex) { error = $"Gradient: invalid JSON — {ex.Message}"; return false; }
+
+            var ckTok = obj["colorKeys"] as JArray;
+            var akTok = obj["alphaKeys"] as JArray;
+            if (ckTok == null || akTok == null)
+            {
+                error = "Gradient: both colorKeys and alphaKeys arrays are required.";
+                return false;
+            }
+            if (ckTok.Count < 2 || ckTok.Count > 8)
+            {
+                error = $"Gradient: colorKeys count must be 2..8, got {ckTok.Count}.";
+                return false;
+            }
+            if (akTok.Count < 2 || akTok.Count > 8)
+            {
+                error = $"Gradient: alphaKeys count must be 2..8, got {akTok.Count}.";
+                return false;
+            }
+
+            var colorKeys = new GradientColorKey[ckTok.Count];
+            for (int i = 0; i < ckTok.Count; i++)
+            {
+                var k = ckTok[i];
+                if (k is not JObject)
+                {
+                    error = $"Gradient: colorKeys[{i}] must be a JSON object like {{\"t\":0,\"color\":\"#000000\"}}.";
+                    return false;
+                }
+                float t = k["t"] != null ? k["t"].Value<float>() : 0f;
+                var colorRaw = k["color"]?.ToString() ?? "#FFFFFF";
+                if (!ColorUtility.TryParseHtmlString(colorRaw, out var col))
+                {
+                    error = $"Gradient: colorKeys[{i}].color '{colorRaw}' is not a valid hex or named color.";
+                    return false;
+                }
+                colorKeys[i] = new GradientColorKey(col, t);
+            }
+
+            var alphaKeys = new GradientAlphaKey[akTok.Count];
+            for (int i = 0; i < akTok.Count; i++)
+            {
+                var k = akTok[i];
+                if (k is not JObject)
+                {
+                    error = $"Gradient: alphaKeys[{i}] must be a JSON object like {{\"t\":0,\"a\":1}}.";
+                    return false;
+                }
+                float t = k["t"] != null ? k["t"].Value<float>() : 0f;
+                float a = k["a"] != null ? k["a"].Value<float>() : 1f;
+                alphaKeys[i] = new GradientAlphaKey(a, t);
+            }
+
+            gradient = new Gradient();
+            gradient.SetKeys(colorKeys, alphaKeys);
+
+            if (obj["mode"] != null)
+            {
+                if (!TryParseGradientMode(obj["mode"].ToString(), out var gm, out error)) return false;
+                gradient.mode = gm;
+            }
+            // colorSpace deferred — Unity's default (Gamma) is correct for most cases.
+
+            return true;
+        }
+
+        static bool TryParseGradientMode(string s, out GradientMode mode, out string error)
+        {
+            mode = GradientMode.Blend;
+            error = null;
+            if (System.Enum.TryParse<GradientMode>(s, true, out var parsed) && System.Enum.IsDefined(typeof(GradientMode), parsed))
+            {
+                mode = parsed;
+                return true;
+            }
+            error = $"Unknown GradientMode '{s}'. Accepted: Blend, Fixed, PerceptualBlend.";
             return false;
         }
 

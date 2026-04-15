@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -140,6 +141,119 @@ namespace UditConnector.Tests
             var err = InvokeTryParseAnimationCurveError(@"not json");
             Assert.IsNotNull(err);
             Assert.That(err, Does.Contain("invalid JSON").Or.Contain("AnimationCurve"));
+        }
+
+        // ---------- Gradient ----------
+
+        public class GradientHolder : ScriptableObject
+        {
+            public Gradient grad = new Gradient();
+        }
+
+        [Test]
+        public void Gradient_ParseMinimalBlackWhite_SetsColorAndAlphaKeys()
+        {
+            var so = ScriptableObject.CreateInstance<GradientHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("grad");
+
+                var json = @"{""colorKeys"":[{""t"":0,""color"":""#000000""},{""t"":1,""color"":""#FFFFFF""}],""alphaKeys"":[{""t"":0,""a"":1},{""t"":1,""a"":1}]}";
+                var g = InvokeTryParseGradient(json);
+                Assert.IsNotNull(g, "parser returned null");
+
+                prop.gradientValue = g;
+                sobj.ApplyModifiedProperties();
+                sobj.Update();
+
+                var result = sobj.FindProperty("grad").gradientValue;
+                Assert.AreEqual(2, result.colorKeys.Length);
+                Assert.AreEqual(2, result.alphaKeys.Length);
+                Assert.AreEqual(0f, result.colorKeys[0].time, 1e-6);
+                Assert.AreEqual(0f, result.colorKeys[0].color.r, 1e-3);
+                Assert.AreEqual(1f, result.colorKeys[1].color.r, 1e-3);
+                Assert.AreEqual(GradientMode.Blend, result.mode);
+            }
+            finally { Object.DestroyImmediate(so); }
+        }
+
+        [Test]
+        public void Gradient_AcceptsFixedMode()
+        {
+            var so = ScriptableObject.CreateInstance<GradientHolder>();
+            try
+            {
+                var sobj = new SerializedObject(so);
+                var prop = sobj.FindProperty("grad");
+
+                var json = @"{""colorKeys"":[{""t"":0,""color"":""#FF0000""},{""t"":1,""color"":""#00FF00""}],""alphaKeys"":[{""t"":0,""a"":1},{""t"":1,""a"":1}],""mode"":""Fixed""}";
+                var g = InvokeTryParseGradient(json);
+                Assert.IsNotNull(g);
+                prop.gradientValue = g;
+                sobj.ApplyModifiedProperties();
+                sobj.Update();
+                Assert.AreEqual(GradientMode.Fixed, sobj.FindProperty("grad").gradientValue.mode);
+            }
+            finally { Object.DestroyImmediate(so); }
+        }
+
+        [Test]
+        public void Gradient_RejectsTooFewKeys()
+        {
+            var json = @"{""colorKeys"":[{""t"":0,""color"":""#000000""}],""alphaKeys"":[{""t"":0,""a"":1},{""t"":1,""a"":1}]}";
+            var err = InvokeTryParseGradientError(json);
+            Assert.IsNotNull(err);
+            Assert.That(err, Does.Contain("colorKeys count"));
+        }
+
+        [Test]
+        public void Gradient_RejectsTooManyKeys()
+        {
+            // 9 color keys — over the 8 cap.
+            var manyKeys = string.Join(",",
+                System.Linq.Enumerable.Range(0, 9).Select(i => $@"{{""t"":{i/8f:F3},""color"":""#FFFFFF""}}"));
+            var json = $@"{{""colorKeys"":[{manyKeys}],""alphaKeys"":[{{""t"":0,""a"":1}},{{""t"":1,""a"":1}}]}}";
+            var err = InvokeTryParseGradientError(json);
+            Assert.IsNotNull(err);
+            Assert.That(err, Does.Contain("colorKeys count"));
+        }
+
+        [Test]
+        public void Gradient_RejectsInvalidColor()
+        {
+            var json = @"{""colorKeys"":[{""t"":0,""color"":""notacolor""},{""t"":1,""color"":""#FFFFFF""}],""alphaKeys"":[{""t"":0,""a"":1},{""t"":1,""a"":1}]}";
+            var err = InvokeTryParseGradientError(json);
+            Assert.IsNotNull(err);
+            Assert.That(err, Does.Contain("not a valid hex"));
+        }
+
+        [Test]
+        public void Gradient_RejectsInvalidMode()
+        {
+            var json = @"{""colorKeys"":[{""t"":0,""color"":""#000000""},{""t"":1,""color"":""#FFFFFF""}],""alphaKeys"":[{""t"":0,""a"":1},{""t"":1,""a"":1}],""mode"":""Bogus""}";
+            var err = InvokeTryParseGradientError(json);
+            Assert.IsNotNull(err);
+            Assert.That(err, Does.Contain("GradientMode"));
+        }
+
+        static Gradient InvokeTryParseGradient(string json)
+        {
+            var m = typeof(ManageComponent).GetMethod("TryParseGradient",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assert.IsNotNull(m, "TryParseGradient not found — renamed?");
+            var args = new object[] { json, null, null };
+            var ok = (bool)m.Invoke(null, args);
+            return ok ? (Gradient)args[1] : null;
+        }
+
+        static string InvokeTryParseGradientError(string json)
+        {
+            var m = typeof(ManageComponent).GetMethod("TryParseGradient",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            var args = new object[] { json, null, null };
+            var ok = (bool)m.Invoke(null, args);
+            return ok ? null : (string)args[2];
         }
 
         // ---------- Shims for private parser ----------
