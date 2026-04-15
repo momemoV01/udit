@@ -4,6 +4,69 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+### Added
+
+**`package` namespace (6 subcommands) — new `ManagePackage` tool.**
+
+```bash
+udit package list                              # declared deps from manifest.json
+udit package list --resolved                   # resolved graph via Client.List
+udit package add com.unity.cinemachine
+udit package add com.unity.cinemachine@2.9.7
+udit package add https://github.com/dbrizov/NaughtyAttributes.git
+udit package remove com.unity.cinemachine
+udit package info com.unity.cinemachine
+udit package search cinemachine
+udit package resolve
+```
+
+- `list` (default) parses `Packages/manifest.json` directly — sub-
+  second response with `{ name, version_declared, kind }` per entry
+  (`kind` = `registry` / `git` / `file`). `--resolved` switches to
+  `PackageManager.Client.List` (transitive deps + actual install
+  source), 1-3s on a cold registry.
+- `add <id>` forwards the id to `Client.Add`. Unity parses the form
+  (registry name, pinned version, git URL) — id passes through the
+  CLI unchanged. Triggers domain reload on success. Response carries
+  resolved `{ name, version, source, package_id }`.
+- `remove <name>` is the symmetric `Client.Remove`.
+- `info <name>` returns single-package metadata via `Client.Search`:
+  current version, latest, latest_release, description, registry,
+  recent versions (last 10) — enough to decide what to add without
+  an extra round-trip.
+- `search <keyword>` substring-matches name + display_name across
+  the full registry catalog (`Client.SearchAll`), capped at 50.
+- `resolve` calls `Client.Resolve` (with `AssetDatabase.Refresh`
+  fallback) — useful after editing manifest.json externally.
+
+All async operations (everything except declared `list`) are polled
+on `EditorApplication.update` via a shared `AwaitRequest<TReq>`
+helper that mirrors the `TaskCompletionSource` pattern from
+`RunTests.cs`. First-slice limitation: domain reloads triggered by
+`add`/`remove` can truncate the response if Unity tears down the
+HTTP server mid-recompile. Re-running `package list` confirms
+post-state. Pending-file + `[InitializeOnLoad]` reload-recovery
+(see `TestRunnerState.cs` for the pattern) is the natural follow-up
+if this becomes a real friction.
+
+CLI side: `cmd/package.go` dispatches to the `manage_package` tool,
+6 actions, with a `firstPositional` helper that mirrors how
+`parseSubFlags` consumes flag values so a `--key value` pair isn't
+mistaken for the package id. `cmd/package_test.go` covers all 6
+actions, all 3 `add` forms, missing-positional rejection for each
+action that requires one, the unknown-action path, and the
+positional helper edge cases (15 cases, all green).
+
+Help text in `printHelp` (Packages section) + dedicated `package`
+topic in `printTopicHelp`. Shell completion (bash / zsh /
+powershell / fish) gains the new top-level command + 6
+subcommands. README.md / README.ko.md gain a `### Package` section
+after `### Project`, kept in lockstep per the bilingual doc policy.
+
+Connector version unchanged (`0.6.2`) — bump deferred to `0.7.0`
+when Phase 4c (`build`) lands and v0.5.0 cuts the two together,
+matching the established Phase 2/3 day-1-patch cadence.
+
 ### Fixed
 
 **udit-connector .meta GUIDs permanently separated from upstream

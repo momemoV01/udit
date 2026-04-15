@@ -511,6 +511,41 @@ udit project preflight
 
 `project preflight`는 `validate` + 빌드 전 위생 체크: 빈 `productName`, 기본값 `"DefaultCompany"`, 컴파일 중 상태 경고. 후속 slice에서 추가될 `udit build player` 걸기 전에 이름 누락 / 씬 누락 / 컴파일 문제를 먼저 잡는 용도.
 
+### Package (UPM 패키지 관리)
+
+Unity Package Manager (UPM) 조작. 에이전트가 선언된 의존성을 조회하고, registry 또는 git URL에서 패키지를 설치/제거하고, 메타데이터를 조회하고, manifest를 강제 재해결할 수 있다 — `exec`로 우회하거나 `Packages/manifest.json`을 직접 편집할 필요 없음.
+
+```bash
+# 선언된 의존성, Packages/manifest.json 직접 파싱 (1초 미만)
+udit package list
+
+# 전이 의존성 포함 resolved graph (1-3초, registry 호출)
+udit package list --resolved
+
+# 설치 — 이름, name@version, git URL 모두 수용
+udit package add com.unity.cinemachine
+udit package add com.unity.cinemachine@2.9.7
+udit package add https://github.com/dbrizov/NaughtyAttributes.git
+
+# 제거 + 메타데이터 + 검색
+udit package remove com.unity.cinemachine
+udit package info com.unity.cinemachine
+udit package search cinemachine
+
+# 강제 재해결 (manifest.json을 외부에서 편집한 후)
+udit package resolve
+```
+
+`package list` (기본)은 `Packages/manifest.json`을 직접 읽어 1초 미만 응답. 반환: `{ source: "manifest", count, packages[] }` (각 항목 `{ name, version_declared, kind }`, kind는 `registry` / `git` / `file`). `--resolved`는 `PackageManager.Client.List`로 전환해 전이 의존성 + 실제 설치 source까지 — 1-3초 소요.
+
+`package add`는 id를 그대로 `Client.Add`에 넘긴다. Unity가 형식(레지스트리 이름, 버전 핀, git URL)을 파싱하고 성공 시 도메인 리로드 트리거. 응답에 resolved `{ name, version, source, package_id }`. `remove`는 대칭의 `Client.Remove`. 둘 다 registry에 따라 몇 초 걸리고 Editor 재컴파일 발생.
+
+`package info`는 단일 패키지 메타 (현재 버전, latest, latest_release, 설명, registry, 최근 10 버전). `package search`는 전체 registry 카탈로그를 substring 매칭하고 50개로 cap — 에이전트 컨텍스트를 넘치지 않게 패키지 발견 가능.
+
+`package resolve`는 `Client.Resolve` 호출 (없으면 `AssetDatabase.Refresh` fallback) — `manifest.json`을 외부에서 편집했거나 이전 resolve가 중단됐을 때 사용.
+
+모든 async 동작은 editor tick에서 폴링. `add`/`remove` 도중 도메인 리로드가 발생하면 응답이 잘릴 수 있음 — 이 경우 `package list`로 사후 상태 재확인.
+
 ### 콘솔 로그
 
 ```bash

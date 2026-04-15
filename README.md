@@ -511,6 +511,41 @@ udit project preflight
 
 `project preflight` is `validate` + pre-build hygiene: warns on empty `productName`, `"DefaultCompany"` default, active compilation state. Use before `udit build player` (coming in a later Phase 4 slice) to catch empty names, missing scenes, or compile hiccups up front.
 
+### Package
+
+Unity Package Manager (UPM) operations. Lets agents inspect declared deps, install/remove packages from the registry or a git URL, look up metadata, and force a manifest re-resolve — without dropping into `exec` or editing `Packages/manifest.json` by hand.
+
+```bash
+# Declared deps, parsed from Packages/manifest.json (sub-second)
+udit package list
+
+# Resolved graph including transitive deps (1-3s, hits the registry)
+udit package list --resolved
+
+# Install — accepts plain name, name@version, or git URL
+udit package add com.unity.cinemachine
+udit package add com.unity.cinemachine@2.9.7
+udit package add https://github.com/dbrizov/NaughtyAttributes.git
+
+# Remove + metadata + search
+udit package remove com.unity.cinemachine
+udit package info com.unity.cinemachine
+udit package search cinemachine
+
+# Force re-resolve (after editing manifest.json externally)
+udit package resolve
+```
+
+`package list` (default) reads `Packages/manifest.json` directly — sub-second, returns `{ source: "manifest", count, packages[] }` with `{ name, version_declared, kind }` per entry (`kind` = `registry` / `git` / `file`). `--resolved` switches to `PackageManager.Client.List` for the resolved graph (transitive deps + actual install source) at the cost of 1-3s.
+
+`package add` forwards the id to `Client.Add` — Unity parses the form (registry name, pinned version, git URL) and triggers a domain reload on success. The response carries the resolved `{ name, version, source, package_id }`. `remove` is the symmetric `Client.Remove`. Both can take a few seconds depending on the registry and trigger Editor recompilation.
+
+`package info` returns single-package metadata (current version, latest, latest_release, description, registry, last 10 versions). `package search` does substring matching against the full registry catalog and caps at 50 results — enough to discover packages without flooding the agent's context.
+
+`package resolve` calls `Client.Resolve` (with `AssetDatabase.Refresh` as a fallback) — useful after editing `manifest.json` externally or when a previous resolve was interrupted.
+
+All async operations are polled on the editor tick. If a domain reload happens mid-call (most likely on `add` or `remove`), the response can be truncated — re-run `package list` to confirm the post-state.
+
 ### Console Logs
 
 ```bash

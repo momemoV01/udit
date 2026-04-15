@@ -125,6 +125,8 @@ func Execute() error {
 		resp, err = txCmd(subArgs, send)
 	case "project":
 		resp, err = projectCmd(subArgs, send)
+	case "package":
+		resp, err = packageCmd(subArgs, send)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 0)
@@ -446,6 +448,14 @@ Project:
   project info                     Unity version, packages, scenes, stats
   project validate [--include-packages]  Scan for missing scripts / build-settings issues
   project preflight                Validate + player-settings + compile state check
+
+Packages:
+  package list [--resolved]        List declared deps (or resolved graph)
+  package add <id>                 Add: name | name@version | git URL
+  package remove <name>            Remove a package
+  package info <name>              Package metadata + latest available version
+  package search <keyword>         Substring search across registry catalog
+  package resolve                  Force re-resolve of manifest.json
 
 Console:
   console                       Read error & warning logs (default)
@@ -1001,6 +1011,78 @@ Notes:
     read straight from manifest.json. For resolved package graphs
     (including transitive dependencies), fall back to exec with
     PackageManager.Client.List.
+`)
+	case "package":
+		fmt.Print(`Usage: udit package <list|add|remove|info|search|resolve> [options]
+
+Unity Package Manager (UPM) operations. Lets agents inspect declared
+deps, install/remove packages from the registry or git, look up
+metadata, and force a manifest re-resolve — without dropping into
+exec or editing Packages/manifest.json by hand.
+
+Subcommands:
+  list [--resolved]
+      Default: declared deps only, parsed straight from
+      Packages/manifest.json. Sub-second response. Returns
+      { source: "manifest", count, packages[] } where each entry has
+      { name, version_declared, kind } (kind = registry | git | file).
+
+      --resolved switches to PackageManager.Client.List, walking the
+      resolved graph including transitive dependencies and the actual
+      install source (Registry / Embedded / Local / Git / BuiltIn).
+      Takes 1-3s on a cold registry.
+
+  add <id>
+      Install a package. The id form is whatever Unity's Client.Add
+      accepts:
+        - registry name:        com.unity.cinemachine
+        - pinned version:       com.unity.cinemachine@2.9.7
+        - git URL:              https://github.com/dbrizov/NaughtyAttributes.git
+      Triggers a domain reload on success. Returns the resolved
+      { name, version, source, package_id }.
+
+  remove <name>
+      Uninstall a package by name. Returns { name }. Triggers a
+      domain reload as Unity recompiles without the package.
+
+  info <name>
+      Single-package metadata via Client.Search. Returns version,
+      latest, latest_release, display_name, description, category,
+      source, registry, keywords, and the 10 most recent versions —
+      enough to decide what to add without an extra round-trip.
+
+  search <keyword>
+      Substring match on name + display_name across the full registry
+      catalog (Client.SearchAll). Returns up to 50 matches with
+      { name, version, display_name, description, source }, plus a
+      truncated flag if the cap was hit.
+
+  resolve
+      Force a Package Manager re-resolve of manifest.json. Useful
+      after editing the manifest externally or when a previous
+      resolve was interrupted. Returns the method used
+      (Client.Resolve or AssetDatabase.Refresh fallback).
+
+Examples:
+  udit package list
+  udit package list --resolved
+  udit package info com.unity.cinemachine
+  udit package search cinemachine
+  udit package add com.unity.cinemachine
+  udit package add com.unity.cinemachine@2.9.7
+  udit package add https://github.com/dbrizov/NaughtyAttributes.git
+  udit package remove com.unity.cinemachine
+  udit package resolve
+
+Notes:
+  - All async operations (add/remove/info/search/list --resolved) are
+    polled on the editor tick. Domain-reload-truncation is possible on
+    add/remove if Unity tears down the http server mid-recompile; if
+    the response cuts off, re-run the same command and check
+    ` + "`package list`" + ` to confirm state.
+  - Registry calls require network access. Offline-friendly variants
+    aren't exposed here; if you need them, exec with Client.List(true)
+    or Client.Search(name, true).
 `)
 	case "console":
 		fmt.Print(`Usage: udit console [options]
