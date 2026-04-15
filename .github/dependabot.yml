@@ -12,6 +12,16 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    groups:
+      # upload-artifact and download-artifact must ship as a pair
+      # (the API between them changed across major versions, so
+      # mixing majors breaks the release workflow). Bundling them
+      # into one PR means Dependabot waits for both upstream majors
+      # to exist before the bump lands.
+      artifact-actions:
+        patterns:
+          - "actions/upload-artifact"
+          - "actions/download-artifact"
 
   - package-ecosystem: "gomod"
     directory: "/"

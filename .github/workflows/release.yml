@@ -50,7 +50,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v8
+      # Must stay at the same major as upload-artifact above — the two
+      # actions exchange artifacts via an API that changed across major
+      # versions. Dependabot's `artifact-actions` group in
+      # .github/dependabot.yml keeps them bumped as a pair.
+      - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
 
