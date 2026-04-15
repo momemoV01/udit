@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -451,10 +453,152 @@ func TestPlural(t *testing.T) {
 }
 
 func TestFmtDuration(t *testing.T) {
-	// Not testing exact formatting — just that it doesn't panic + gives
-	// non-empty output for a few common durations.
-	for _, d := range []string{"100ms", "2.5s", "1m30s"} {
-		_ = d // signature only
+	cases := []struct {
+		in   time.Duration
+		want string
+	}{
+		{100 * time.Millisecond, "100ms"},
+		{999 * time.Millisecond, "999ms"},
+		{time.Second, "1.0s"},
+		{2500 * time.Millisecond, "2.5s"},
+		{59 * time.Second, "59.0s"},
+		{time.Minute, "1m0s"},
+		{90 * time.Second, "1m30s"},
+		{2 * time.Hour, "120m0s"}, // hours fold into minutes
+	}
+	for _, c := range cases {
+		if got := fmtDuration(c.in); got != c.want {
+			t.Errorf("fmtDuration(%s) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// ----------------------------------------------------------------------
+// runPrinter JSON mode — covers emitJSON + every kind field
+// ----------------------------------------------------------------------
+
+func TestRunPrinter_JSONMode_AllKinds(t *testing.T) {
+	p := newRunPrinter(true)
+	task := &RunTask{Steps: []string{"step1", "step2"}, ContinueOnError: true}
+
+	out := captureStdout(t, func() {
+		p.taskStart("demo", task, false)
+		p.stepStart(0, 2, "step1")
+		p.stepExit(0, 2, 0, 50*time.Millisecond)
+		p.stepDry(1, 2)
+		p.stepError(1, 2, "bad step", errors.New("unclosed quote"))
+		p.taskEnd("demo", time.Now().Add(-time.Second), false)
+	})
+
+	// Each printer method emits one NDJSON line. Parse each and check
+	// the "kind" field is what we expect, in order.
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	wantKinds := []string{"task_start", "step_start", "step_exit", "step_dry", "step_error", "task_complete"}
+	if len(lines) != len(wantKinds) {
+		t.Fatalf("got %d lines, want %d. output:\n%s", len(lines), len(wantKinds), out)
+	}
+	for i, wantKind := range wantKinds {
+		var m map[string]interface{}
+		if err := yaml.Unmarshal([]byte(lines[i]), &m); err != nil {
+			t.Fatalf("line %d parse: %v (%q)", i, err, lines[i])
+		}
+		if m["kind"] != wantKind {
+			t.Errorf("line %d: kind=%v, want %v", i, m["kind"], wantKind)
+		}
+	}
+
+	// Spot-check fields on a couple of entries.
+	var taskStart map[string]interface{}
+	_ = yaml.Unmarshal([]byte(lines[0]), &taskStart)
+	if taskStart["task"] != "demo" {
+		t.Errorf("task_start.task = %v", taskStart["task"])
+	}
+	if taskStart["continue_on_error"] != true {
+		t.Errorf("task_start.continue_on_error = %v", taskStart["continue_on_error"])
+	}
+
+	var stepError map[string]interface{}
+	_ = yaml.Unmarshal([]byte(lines[4]), &stepError)
+	if stepError["error"] != "unclosed quote" {
+		t.Errorf("step_error.error = %v", stepError["error"])
+	}
+	if stepError["cmd"] != "bad step" {
+		t.Errorf("step_error.cmd = %v", stepError["cmd"])
+	}
+
+	var taskEnd map[string]interface{}
+	_ = yaml.Unmarshal([]byte(lines[5]), &taskEnd)
+	if taskEnd["success"] != false {
+		t.Errorf("task_complete.success = %v", taskEnd["success"])
+	}
+}
+
+// ----------------------------------------------------------------------
+// executeTask — parse-error branches (stepError path)
+// ----------------------------------------------------------------------
+
+// Steps with an unclosed quote trip splitRunStep. In fail-fast mode the
+// task returns immediately; in continue_on_error it keeps going and
+// returns a summary failure.
+func TestExecuteTask_ParseError_FailFast(t *testing.T) {
+	prev := loadedConfig
+	loadedConfig = &Config{
+		Run: RunCfg{Tasks: map[string]RunTask{
+			"bad": {Steps: []string{`foo "unterminated`, "should-never-run"}},
+		}},
+	}
+	defer func() { loadedConfig = prev }()
+
+	// JSON mode so stepError lands on stdout (captureStdout reach).
+	out := captureStdout(t, func() {
+		err := runCmd([]string{"bad", "--json"}, false)
+		if err == nil {
+			t.Errorf("expected parse error, got nil")
+		} else if !strings.Contains(err.Error(), "parse step 1") {
+			t.Errorf("error should mention parse failure: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, `"kind":"step_error"`) {
+		t.Errorf("expected step_error NDJSON, got:\n%s", out)
+	}
+	if strings.Contains(out, "should-never-run") {
+		t.Errorf("fail-fast violated — second step ran:\n%s", out)
+	}
+}
+
+func TestExecuteTask_ParseError_ContinueOnError(t *testing.T) {
+	helperExe := buildHelper(t)
+	t.Setenv("UDIT_RUN_EXEC", helperExe)
+
+	prev := loadedConfig
+	loadedConfig = &Config{
+		Run: RunCfg{Tasks: map[string]RunTask{
+			"mix": {
+				ContinueOnError: true,
+				Steps: []string{
+					`foo "unterminated`, // parse error
+					"0 recovers",        // must still run
+				},
+			},
+		}},
+	}
+	defer func() { loadedConfig = prev }()
+
+	out := captureStdout(t, func() {
+		err := runCmd([]string{"mix", "--json"}, false)
+		if err == nil {
+			t.Errorf("expected summary failure error, got nil")
+		} else if !strings.Contains(err.Error(), "one or more steps failed") {
+			t.Errorf("error should mention aggregate failure: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, `"kind":"step_error"`) {
+		t.Errorf("expected step_error NDJSON (parse failure on step 1):\n%s", out)
+	}
+	if !strings.Contains(out, `"kind":"step_start"`) {
+		t.Errorf("expected step_start for step 2 after continue:\n%s", out)
 	}
 }
 
