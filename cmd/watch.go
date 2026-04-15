@@ -29,15 +29,19 @@ import (
 func runWatch(subArgs []string, globalJSON bool) error {
 	fs := flag.NewFlagSet("watch", flag.ContinueOnError)
 	var (
-		configPath string
-		localJSON  bool
-		verbose    bool
-		noExec     bool
+		configPath    string
+		localJSON     bool
+		verbose       bool
+		noExec        bool
+		adhocOnChange string
+		adhocPaths    stringSliceFlag
 	)
 	fs.StringVar(&configPath, "config", "", "Path to .udit.yaml (default: walk up from cwd)")
 	fs.BoolVar(&localJSON, "json", false, "Emit NDJSON event log on stdout")
 	fs.BoolVar(&verbose, "verbose", false, "Emit verbose diagnostic log on stderr")
 	fs.BoolVar(&noExec, "no-exec", false, "Print what would run; don't execute hooks")
+	fs.Var(&adhocPaths, "path", "Ad-hoc: glob pattern to watch (repeatable; pairs with --on-change)")
+	fs.StringVar(&adhocOnChange, "on-change", "", "Ad-hoc: command to run on matching change (pairs with --path)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, watchHelp())
 	}
@@ -47,9 +51,23 @@ func runWatch(subArgs []string, globalJSON bool) error {
 
 	useJSON := globalJSON || localJSON
 
-	cfg, cfgPath, err := loadWatchConfig(configPath)
+	// Ad-hoc mode bypasses the .udit.yaml lookup when both --path and
+	// --on-change are set — useful for "just this one time" experiments
+	// without editing the project config.
+	var cfg watch.WatchCfg
+	var cfgPath string
+	adhocCfg, isAdhoc, err := adhocWatchCfg(adhocPaths, adhocOnChange)
 	if err != nil {
 		return err
+	}
+	if isAdhoc {
+		cfg = adhocCfg
+		cfgPath = "" // no yaml backing this run
+	} else {
+		cfg, cfgPath, err = loadWatchConfig(configPath)
+		if err != nil {
+			return err
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -443,6 +461,8 @@ func watchHelp() string {
 	return `Usage: udit watch [options]
 
 Run pre-defined hooks from .udit.yaml when matching files change.
+With --path and --on-change, bypass the config and run a single
+ad-hoc hook (one-shot experimentation without editing yaml).
 
 Options:
   --config PATH     Path to .udit.yaml (default: walk up from cwd)
@@ -450,7 +470,13 @@ Options:
   --verbose         Emit verbose diagnostic log on stderr
   --no-exec         Print what would run; don't execute hooks
 
-Example .udit.yaml:
+  --path GLOB       Ad-hoc: glob pattern to watch (repeatable)
+  --on-change CMD   Ad-hoc: command to run when a match changes
+
+Ad-hoc example:
+  udit watch --path "Assets/Scripts/**/*.cs" --on-change "refresh --compile"
+
+Config example (.udit.yaml):
   watch:
     debounce: 300ms
     hooks:
@@ -467,4 +493,43 @@ Signals:
 
 See https://github.com/momemoV01/udit for full documentation.
 `
+}
+
+// stringSliceFlag is a flag.Value that collects repeated --flag values
+// into a slice. Go's flag package has no native repeated-string flag;
+// this is the canonical Go idiom.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ",") }
+
+func (s *stringSliceFlag) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+// adhocWatchCfg constructs an in-memory WatchCfg from --path + --on-change
+// flags when they're present. Returns (cfg, true, nil) to signal the
+// caller should skip the yaml lookup, or (_, false, nil) when ad-hoc
+// wasn't requested. Errors surface partial invocations (only one of
+// the pair set) so users aren't left guessing why yaml is still being
+// read.
+func adhocWatchCfg(paths []string, onChange string) (watch.WatchCfg, bool, error) {
+	if len(paths) == 0 && onChange == "" {
+		return watch.WatchCfg{}, false, nil
+	}
+	if len(paths) == 0 {
+		return watch.WatchCfg{}, false,
+			fmt.Errorf("--on-change requires at least one --path (got --on-change=%q with no --path)", onChange)
+	}
+	if onChange == "" {
+		return watch.WatchCfg{}, false,
+			fmt.Errorf("--path requires --on-change (got %d --path value(s) with no --on-change)", len(paths))
+	}
+	return watch.WatchCfg{
+		Hooks: []watch.Hook{{
+			Name:  "ad-hoc",
+			Paths: paths,
+			Run:   onChange,
+		}},
+	}, true, nil
 }

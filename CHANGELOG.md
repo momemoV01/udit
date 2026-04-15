@@ -4,6 +4,70 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-04-15
+
+Closes the v0.6.x deferred ad-hoc `watch` mode. `udit watch --path
+<glob> --on-change <cmd>` runs a single hook against the supplied
+glob without needing a `.udit.yaml` — the "just this once" path I'd
+otherwise reach for a one-line shell loop.
+
+### Added
+
+```bash
+# Single hook, no config edit needed
+udit watch --path "Assets/Scripts/**/*.cs" --on-change "refresh --compile"
+
+# Multiple paths, one command
+udit watch --path "Assets/**/*.prefab" --path "Assets/**/*.unity" \
+  --on-change "reserialize \$RELFILE"
+```
+
+`--path` is repeatable (collects into the synthetic hook's `paths`
+list); `--on-change` is the command string passed to the same udit
+binary, identical semantics to a config hook's `run:` (variable
+expansion, $FILE/$RELFILE/$FILES/$RELFILES all work).
+
+When either ad-hoc flag is set without the other, `udit watch` errors
+out with a pointed message instead of silently falling through to
+the yaml lookup. With both set, the yaml is bypassed entirely —
+useful for testing a glob/command pair without polluting the config.
+
+### Implementation
+
+- `cmd/watch.go`:
+  * `stringSliceFlag` — canonical Go idiom for a repeated `--flag`
+    value (the stdlib `flag` package has no native support).
+  * `adhocWatchCfg(paths, onChange)` — pure function: returns
+    `(WatchCfg, true, nil)` when both are set, `(_, false, nil)` to
+    fall through to config-driven mode, or an error for partial
+    invocation. Tested in isolation without firing fsnotify.
+  * `runWatch` dispatch: ad-hoc path checked first; on success the
+    yaml lookup is skipped and `cfgPath` stays empty (so the
+    startup log says `config=` only when a real file was loaded).
+- The synthetic hook gets the literal name `ad-hoc` so it shows up
+  in event logs as `[watch:ad-hoc] write Assets/Foo.cs → …`.
+- All existing watch features stay intact for ad-hoc mode: the
+  Defaults() pass fills `debounce` (300ms), `on_busy` (queue),
+  ignore patterns (Unity defaults), max_parallel (4), etc. The
+  ad-hoc path skips the user's project ignore overrides only because
+  the user didn't supply them.
+
+### Tests
+
+- `TestAdhocWatchCfg_BothSet` — happy path produces a single hook.
+- `TestAdhocWatchCfg_MultiplePaths` — `--path` repeated preserves order.
+- `TestAdhocWatchCfg_Neither` — ok=false, err=nil (fall through).
+- `TestAdhocWatchCfg_PathsOnly` / `_OnChangeOnly` — partial use is
+  an explicit error pointing at the missing flag.
+- `TestAdhocWatchCfg_ValidatesAndGetsDefaults` — the synthetic cfg
+  passes `WatchCfg.Validate()` and `Defaults()` (i.e. it works
+  end-to-end through the runner).
+- `TestStringSliceFlag` — `Set` / `String` round-trip.
+
+Live-smoke verified: `udit watch --path "Assets/**/*.cs" --on-change
+version --verbose` started without yaml, picked up a `Bar.cs` create,
+fired the synthetic `ad-hoc` hook, exited cleanly on signal.
+
 ## [0.8.1] - 2026-04-15
 
 Adds `udit config` — a small namespace for inspecting the loaded

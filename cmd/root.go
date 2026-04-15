@@ -591,6 +591,7 @@ Watch:
   watch                         Run hooks from .udit.yaml on file changes
   watch --config <path>         Use an explicit config file
   watch --no-exec               Print what would run without executing
+  watch --path <glob> --on-change <cmd>    Ad-hoc hook (no config needed)
 
 Completion:
   completion <shell>            Print shell completion script (bash, zsh,

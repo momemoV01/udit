@@ -887,6 +887,10 @@ udit watch --no-exec
 
 # NDJSON 이벤트 로그 출력
 udit watch --json | tee watch.log
+
+# Ad-hoc 일회성 (v0.8.2+) — config 없이
+udit watch --path "Assets/Scripts/**/*.cs" --on-change "refresh --compile"
+udit watch --path "Assets/**/*.prefab" --path "Assets/**/*.unity" --on-change "reserialize \$RELFILE"
 ```
 
 `.udit.yaml` 예시:

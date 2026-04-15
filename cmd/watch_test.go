@@ -108,6 +108,105 @@ func TestLoadWatchConfig_ErrorListsBothLayers(t *testing.T) {
 	}
 }
 
+// ---- Ad-hoc mode ----
+
+func TestAdhocWatchCfg_BothSet(t *testing.T) {
+	cfg, ok, err := adhocWatchCfg([]string{"Assets/**/*.cs"}, "refresh --compile")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ad-hoc mode")
+	}
+	if len(cfg.Hooks) != 1 {
+		t.Fatalf("expected 1 hook, got %d", len(cfg.Hooks))
+	}
+	h := cfg.Hooks[0]
+	if h.Name != "ad-hoc" {
+		t.Errorf("hook name: %q", h.Name)
+	}
+	if len(h.Paths) != 1 || h.Paths[0] != "Assets/**/*.cs" {
+		t.Errorf("paths: %v", h.Paths)
+	}
+	if h.Run != "refresh --compile" {
+		t.Errorf("run: %q", h.Run)
+	}
+}
+
+func TestAdhocWatchCfg_MultiplePaths(t *testing.T) {
+	paths := []string{"Assets/**/*.cs", "Packages/**/*.cs"}
+	cfg, ok, err := adhocWatchCfg(paths, "refresh --compile")
+	if err != nil || !ok {
+		t.Fatalf("want (ok, nil), got (%v, %v)", ok, err)
+	}
+	if len(cfg.Hooks[0].Paths) != 2 {
+		t.Errorf("both paths should be preserved: %v", cfg.Hooks[0].Paths)
+	}
+}
+
+func TestAdhocWatchCfg_Neither(t *testing.T) {
+	_, ok, err := adhocWatchCfg(nil, "")
+	if err != nil {
+		t.Errorf("neither set should not error: %v", err)
+	}
+	if ok {
+		t.Errorf("neither set should return ok=false (fall through to config)")
+	}
+}
+
+func TestAdhocWatchCfg_PathsOnly(t *testing.T) {
+	_, _, err := adhocWatchCfg([]string{"Assets/**"}, "")
+	if err == nil {
+		t.Fatalf("expected error for --path without --on-change")
+	}
+	if !strings.Contains(err.Error(), "--on-change") {
+		t.Errorf("error should mention --on-change: %v", err)
+	}
+}
+
+func TestAdhocWatchCfg_OnChangeOnly(t *testing.T) {
+	_, _, err := adhocWatchCfg(nil, "refresh --compile")
+	if err == nil {
+		t.Fatalf("expected error for --on-change without --path")
+	}
+	if !strings.Contains(err.Error(), "--path") {
+		t.Errorf("error should mention --path: %v", err)
+	}
+}
+
+// Ensure the constructed hook survives WatchCfg.Validate + Defaults —
+// i.e. a real `udit watch --path X --on-change Y` invocation wouldn't
+// fail at the validation step.
+func TestAdhocWatchCfg_ValidatesAndGetsDefaults(t *testing.T) {
+	cfg, ok, err := adhocWatchCfg([]string{"Assets/**/*.cs"}, "refresh --compile")
+	if err != nil || !ok {
+		t.Fatalf("build: ok=%v err=%v", ok, err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("ad-hoc cfg should validate: %v", err)
+	}
+	d := cfg.Defaults()
+	if d.Debounce <= 0 {
+		t.Errorf("defaults should fill debounce: %v", d.Debounce)
+	}
+	if d.OnBusy == "" {
+		t.Errorf("defaults should fill on_busy")
+	}
+}
+
+func TestStringSliceFlag(t *testing.T) {
+	var s stringSliceFlag
+	_ = s.Set("a")
+	_ = s.Set("b")
+	_ = s.Set("c")
+	if len(s) != 3 {
+		t.Errorf("collect: %v", s)
+	}
+	if s.String() != "a,b,c" {
+		t.Errorf("String(): %q", s.String())
+	}
+}
+
 func TestLoadWatchConfig_ExplicitConfigWins(t *testing.T) {
 	// --config PATH should bypass instance + walk-up entirely.
 	home := isolateInstances(t)

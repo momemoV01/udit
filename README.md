@@ -919,6 +919,10 @@ udit watch --no-exec
 
 # Emit NDJSON event log
 udit watch --json | tee watch.log
+
+# Ad-hoc one-shot (v0.8.2+) — no config needed
+udit watch --path "Assets/Scripts/**/*.cs" --on-change "refresh --compile"
+udit watch --path "Assets/**/*.prefab" --path "Assets/**/*.unity" --on-change "reserialize \$RELFILE"
 ```
 
 Example `.udit.yaml`:
