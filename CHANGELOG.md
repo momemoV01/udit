@@ -4,6 +4,107 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-15
+
+Phase 5.3 lands: `udit run` — script runner over tasks defined in
+`.udit.yaml`. Closes Phase 5 (Stream). Pure CLI addition — no
+Connector bump.
+
+### Added
+
+**`udit run` — workflow runner.**
+
+```yaml
+run:
+  tasks:
+    verify:
+      description: "Full pre-commit verification"
+      steps:
+        - editor refresh --compile
+        - test run --output test-results.xml
+        - project validate
+    release_win:
+      steps:
+        - run verify              # recurse — `depends_on` alternative
+        - build player --config prod_win64
+    nightly:
+      continue_on_error: true     # log failures, keep going
+      steps:
+        - test run --mode EditMode
+        - test run --mode PlayMode
+        - build player --config prod_win64
+```
+
+```bash
+udit run                          # list tasks
+udit run verify                   # execute
+udit run verify --dry-run         # print steps without executing
+udit run nightly --json | jq      # NDJSON per step for agents
+```
+
+### Behavior
+
+- Steps execute sequentially via `exec.Command(os.Executable(), ...)`
+  — same udit binary, no PATH drift, inherited stdin/stdout/stderr.
+- **Fail-fast** by default; `continue_on_error: true` on a task
+  switches to log-and-proceed.
+- **Recursion** via `run <other>` as a step, in place of a first-class
+  `depends_on:`. Guarded by two env vars set on child processes:
+  `UDIT_RUN_STACK` (colon-separated ancestor chain) and
+  `UDIT_RUN_DEPTH` (counter, cap 8). A recursion hit on an ancestor
+  surfaces the full chain: `cycle detected in udit run chain: a → b → a`.
+- **Ctrl+C** cancels the current step via `signal.NotifyContext` →
+  `exec.CommandContext` kills the child; the loop breaks immediately.
+- **NDJSON** emits one event per step: `task_start` / `step_start` /
+  `step_exit` / `step_error` / `step_dry` / `task_complete`.
+- **TTY color**: green `OK` / red `FAIL exit=N` markers when
+  stdout is a terminal, auto-disabled on pipe (reuses v0.7.0's
+  `golang.org/x/term` dep).
+- **Flag ordering**: `udit run verify --dry-run` and `udit run
+  --dry-run verify` both work. `flag.FlagSet.Parse` stops at the
+  first non-flag token by default; runCmd explicitly splits
+  positional from flag args up front to avoid silently ignoring
+  trailing flags.
+
+### Implementation
+
+- `cmd/run.go` (new, ~500 lines):
+  * `RunCfg` + `RunTask` types with `description`, `steps`,
+    `continue_on_error`.
+  * `runCmd(subArgs, globalJSON)` — list / execute / dry-run / JSON
+    dispatch.
+  * `executeTask` — sequential loop, per-step `exec.CommandContext`,
+    env var push for nested recursion.
+  * `checkRecursion(taskName)` — reads parent's `UDIT_RUN_STACK`,
+    rejects cycles (full chain) or depth overflow (`maxRunDepth = 8`).
+  * `splitRunStep` — POSIX-ish tokenizer (quotes + backslash).
+  * `runPrinter` — plain-text + color + NDJSON output variants.
+- `cmd/config.go`: `Config` struct gains `Run RunCfg`.
+- `cmd/root.go`: `case "run":` dispatch; overview + topic help.
+- `UDIT_RUN_EXEC` env var — internal test backdoor for binary
+  override (normally os.Executable()).
+
+### Tests
+
+- `TestLoadConfig_ParsesRunSection` — yaml → Go struct.
+- `TestSplitRunStep` (+ `_Errors`) — POSIX tokenizer.
+- `TestCheckRecursion_{DepthCap, CycleDetected, TopLevelOK, NestedOK}`
+  — env var contract.
+- `TestRunCmd_{ListMode, ListJSONMode, NoConfig, UnknownTask, EmptySteps, DryRun}`
+  — dispatch + error surface.
+- `TestExecuteTask_{FailFast, ContinueOnError}` — real subprocess
+  exec via a compiled-on-demand helper (exit N + echo).
+
+### Limitations (v0.8.x patches if they surface)
+
+- No `depends_on:` first-class — use `run <other>` recursion. Cost:
+  no caching; two top-level tasks depending on same subtask run it
+  twice. Accepted for MVP since common side-effects (refresh,
+  reserialize, test) are idempotent.
+- No variable substitution (`$TASK`, `$STEP_INDEX`, etc.).
+- No parallel execution.
+- No env-var injection per task.
+
 ## [0.7.1] - 2026-04-15
 
 Clears the two `build player` options deferred in Phase 4c (v0.5.0).

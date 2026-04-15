@@ -803,6 +803,9 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | UCI-004/006/007 신설, `retryable` 필드 단일화 | `StreamInterrupted` (UCI-004, 재시도 가능) 는 `ConnectionRefused` (UCI-002, 사용자 개입 필요)와 구분 필요. `InvalidStreamFilter` (UCI-006)는 400 응답, `ConnectorTooOld` (UCI-007)는 Content-Type 불일치 — version skew 즉시 abort 해야 reconnect loop busy 안 돔. retryable 속성은 code별 분리 대신 응답 field로 — 미래 증분 에러 코드가 split될 위험 제거 |
 | 2026-04-15 | `build --il2cpp` — 임시 set + finally restore, 크래시 시 best-effort만 (v0.7.1) | 대안: IL2CPP 프로젝트를 VCS에 영구 고정 — agent 요청마다 PlayerSettings.asset diff 발생해 에디터 작업과 충돌. 채택: `SetScriptingBackend(IL2CPP)` 빌드 직전 + `try/finally`로 이전 backend 복원. `NamedBuildTarget.FromBuildTargetGroup(buildOptions.targetGroup)`로 target-specific (다른 플랫폼 설정 영향 X). **제한**: Unity 프로세스 크래시 시 finally 실행 안 됨 → PlayerSettings가 IL2CPP 상태로 남음. 문서에 명시, 재실행으로 회복 |
 | 2026-04-15 | `build --config <name>` — 별도 namespace 아니라 기존 watch와 동일 yaml에 `build.targets.<name>` (v0.7.1) | 대안: `.udit.buildconfig.yaml` 별도 파일. 채택: 같은 `.udit.yaml`에 `build:` 섹션. Phase 5.1 watch가 확립한 yaml 스키마 확장 패턴 재사용 — 사용자는 설정 파일 하나만 관리. CLI flag이 preset field를 항상 override: `--config production --output custom/` 허용. Preset field가 pointer (`*bool`)로 "미설정" vs "명시적 false" 구분. 모름 preset 이름 요청 시 에러 메시지에 `Available:` 리스트 포함 — 사용자가 다음 시도에 바로 수정 가능 |
+| 2026-04-15 | `udit run` — `depends_on` 대신 재귀 호출 (`run <other>` as step) — (v0.8.0, Phase 5.3) | `depends_on:` 없는 대신 step 안에서 `run verify` 같은 self-recursion 허용. 장점: (1) yaml schema 단순, topological sort 불필요, (2) cycle 감지는 env-var 기반 stack으로 `UDIT_RUN_STACK=a:b:c` 전달 + 다음 깊이에서 자기 발견 시 에러 + 전체 체인 프린트 (`a → b → a`), (3) depth 8 cap으로 무한 방지. 단점: 두 상위 task가 같은 sub-task에 의존하면 중복 실행 (caching X). 실사용 패턴에서 중복 실행 진짜 문제면 v0.8.x에서 `depends_on` 추가 예정. 현재까진 agent 사용 pattern에서 중복 실행도 side-effect은 idempotent (refresh --compile, test run 등) — 허용 |
+| 2026-04-15 | Recursion guard를 env var (`UDIT_RUN_STACK`/`UDIT_RUN_DEPTH`)로 | 대안: hidden CLI flag (`--_depth`, `--_stack`). 채택: env var — 사용자 argv 오염 없음, shell escape 이슈 없음, step 파싱과 독립. 자식 프로세스가 parent의 stack 보고 cycle 검사 후 자기 이름 push해서 손자에 넘김. Go exec.Command.Env = append(os.Environ(), "UDIT_RUN_STACK=...") pattern |
+| 2026-04-15 | Run step의 flag ordering — positional 앞 뒤 둘 다 허용 | Go의 `flag.FlagSet.Parse`는 첫 non-flag 만나면 stop — `udit run verify --dry-run`에서 `--dry-run` 안 읽힘. Fix: runCmd가 subArgs를 positional + flag로 split해서 flag만 `fs.Parse` 전달. `udit run --dry-run verify` 및 `udit run verify --dry-run` 둘 다 동작. 단순 + 명시적 (Go standard `flag` 패키지의 POSIX interspersed flag 미지원을 메움) |
 
 ---
 
@@ -851,6 +854,7 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
 - [x] **Phase 5.2 착수 — `log tail -f` SSE 스트리밍** (2026-04-15) — Connector 0.8.0, `/logs/stream` endpoint + `Application.logMessageReceived` subscription + ring buffer + multi-client fanout + 도메인 리로드 재접속 + NDJSON/color 출력
 - [x] v0.7.1 patch — `build player --il2cpp` + `build player --config <name>` (Phase 4c 때 보류했던 것, Connector 0.8.1) (2026-04-15)
+- [x] **Phase 5.3 착수 — `udit run`** (2026-04-15) — `.udit.yaml run.tasks.<name>` 스크립트 러너. 순차 + fail-fast/continue-on-error + 재귀 (depends_on 대신) + cycle 감지 + NDJSON. v0.8.0. Connector 변경 없음 (순수 CLI)
 - [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
 - [ ] `udit watch --path P --on-change C` — ad-hoc 모드 (config 없이), v0.6.x 증분
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)

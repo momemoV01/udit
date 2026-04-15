@@ -771,6 +771,61 @@ The `--watch` variant ships two sample hooks (`compile_cs` and
 `reserialize_yaml`) that work as-is — just edit the `paths:` list to
 scope them.
 
+### Run (v0.8.0+)
+
+`udit run` executes a named workflow from `.udit.yaml`'s `run.tasks`
+section — the `make` / `npm run` equivalent for udit. Each step is a
+single udit sub-command; they fire sequentially against the same udit
+binary the CLI is running.
+
+```yaml
+run:
+  tasks:
+    verify:
+      description: "Full pre-commit verification"
+      steps:
+        - editor refresh --compile
+        - test run --output test-results.xml
+        - project validate
+
+    release_win:
+      description: "Production Windows build"
+      steps:
+        - run verify                    # recurse into another task
+        - build player --config prod_win64
+
+    nightly:
+      description: "Full nightly pipeline"
+      continue_on_error: true           # log failures, keep going
+      steps:
+        - test run --mode EditMode
+        - test run --mode PlayMode
+        - build player --config prod_win64
+```
+
+```bash
+udit run                         # list tasks (name + description + step count)
+udit run verify                  # execute
+udit run verify --dry-run        # print steps without running
+udit run nightly --json | jq     # NDJSON progress per step (for agents)
+```
+
+**Behavior**:
+
+- **Sequential**: steps run in order via `exec` of the same udit
+  binary (`os.Executable()` — no PATH drift).
+- **Fail-fast** by default — first non-zero exit aborts the task.
+  Set `continue_on_error: true` on the task to log failures and
+  proceed.
+- **Recursion** is allowed via `run <other>` as a step, replacing a
+  first-class `depends_on:`. Depth capped at 8; cycles detected and
+  rejected with the full chain (e.g. `a → b → a`).
+- **Ctrl+C** cancels the current step (SIGINT forwarded via
+  `context.Context`) and stops the task.
+- **NDJSON**: `--json` emits one line per event (`task_start`,
+  `step_start`, `step_exit`, `task_complete`) for programmatic
+  consumption.
+
 ### Log tail -f (v0.7.0+)
 
 `udit log tail` is a long-lived stream of Unity console messages — the

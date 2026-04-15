@@ -765,6 +765,50 @@ udit init --force --watch     # 기존 파일 덮어쓰기
 
 `--watch` 옵션은 샘플 hook 두 개 (`compile_cs`, `reserialize_yaml`)를 포함 — `paths:` 리스트만 손보면 그대로 동작.
 
+### Run (v0.8.0+)
+
+`udit run`은 `.udit.yaml`의 `run.tasks` 섹션에 정의된 워크플로를 실행 — udit용 `make` / `npm run`. 각 step은 udit sub-command 하나, 순차적으로 같은 udit 바이너리에 대해 fork+exec.
+
+```yaml
+run:
+  tasks:
+    verify:
+      description: "커밋 전 전체 검증"
+      steps:
+        - editor refresh --compile
+        - test run --output test-results.xml
+        - project validate
+
+    release_win:
+      description: "Windows 릴리스 빌드"
+      steps:
+        - run verify                    # 다른 task 재귀 호출
+        - build player --config prod_win64
+
+    nightly:
+      description: "야간 파이프라인"
+      continue_on_error: true           # 실패 로깅 후 계속
+      steps:
+        - test run --mode EditMode
+        - test run --mode PlayMode
+        - build player --config prod_win64
+```
+
+```bash
+udit run                         # task 리스트 (이름 + 설명 + step 수)
+udit run verify                  # 실행
+udit run verify --dry-run        # 실제 실행 없이 step 출력
+udit run nightly --json | jq     # step별 NDJSON 진행 상황 (에이전트용)
+```
+
+**동작**:
+
+- **순차 실행**: `os.Executable()`로 같은 udit 바이너리 fork+exec — PATH drift 없음.
+- **Fail-fast** 기본 — 첫 non-zero exit에서 중단. Task에 `continue_on_error: true` 설정 시 실패 로깅 후 다음 step 진행.
+- **재귀 호출**: step으로 `run <other>` 쓸 수 있음 (`depends_on:` 대안). 깊이 8 cap + cycle 감지 (전체 체인 에러 메시지: `a → b → a`).
+- **Ctrl+C**: 현재 실행 중 step 취소 (`context.Context` 통해 SIGINT 전파) + task 중단.
+- **NDJSON**: `--json` 모드 — step별 이벤트 한 줄씩 (`task_start` / `step_start` / `step_exit` / `task_complete`).
+
 ### Log tail -f (v0.7.0+)
 
 `udit log tail`은 Unity 콘솔 메시지를 실시간 스트리밍하는 장기 실행 명령 — `udit console`의 스냅샷에 대응하는 live 버전. Connector의 Server-Sent Events를 사용, 도메인 리로드 시 자동 재접속.

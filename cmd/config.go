@@ -21,6 +21,7 @@ type Config struct {
 	Exec             ExecCfg        `yaml:"exec"`
 	Watch            watch.WatchCfg `yaml:"watch"`
 	Build            BuildCfg       `yaml:"build"`
+	Run              RunCfg         `yaml:"run"`
 }
 
 type ExecCfg struct {

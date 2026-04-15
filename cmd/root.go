@@ -79,6 +79,8 @@ func Execute() error {
 		return initCmd(subArgs)
 	case "log":
 		return logCmd(subArgs, flagJSON)
+	case "run":
+		return runCmd(subArgs, flagJSON)
 	case "watch":
 		// watch is a long-running command that doesn't require Unity to
 		// be alive at startup — hooks may run when Unity is off (e.g.
@@ -565,6 +567,12 @@ Log Streaming (v0.7.0+):
   log tail --filter "regex"     Client-side regex filter on messages
   log tail --json               NDJSON output
   log list                      Historical snapshot (alias for udit console)
+
+Run (v0.8.0+):
+  run                           List available tasks from .udit.yaml
+  run <name>                    Execute a task (sequential steps)
+  run <name> --dry-run          Print steps without executing
+  run <name> --json             NDJSON progress for agents
 
 Watch:
   watch                         Run hooks from .udit.yaml on file changes
@@ -1443,6 +1451,8 @@ Examples:
 `)
 	case "init":
 		fmt.Print(initHelp())
+	case "run":
+		fmt.Print(runHelp())
 	case "log":
 		fmt.Print(`Usage: udit log <subcommand> [options]
 
