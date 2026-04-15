@@ -279,6 +279,10 @@ type logFormatter struct {
 	verbose bool
 	useAnsi bool
 	rx      *regexp.Regexp
+	// out/errw are injection points for tests. In production they always
+	// point at os.Stdout / os.Stderr via newLogFormatter.
+	out  io.Writer
+	errw io.Writer
 }
 
 func newLogFormatter(useJSON, verbose, noColor bool, rx *regexp.Regexp) *logFormatter {
@@ -291,6 +295,8 @@ func newLogFormatter(useJSON, verbose, noColor bool, rx *regexp.Regexp) *logForm
 		verbose: verbose,
 		useAnsi: useAnsi,
 		rx:      rx,
+		out:     os.Stdout,
+		errw:    os.Stderr,
 	}
 }
 
@@ -362,7 +368,7 @@ func (f *logFormatter) emitLogText(frame logFrame) error {
 		tag = colorFor(frame.Type) + tag + ansiReset
 	}
 	first := fmt.Sprintf("%s %s %s", ts, tag, frame.Message)
-	if _, err := fmt.Fprintln(os.Stdout, first); err != nil {
+	if _, err := fmt.Fprintln(f.out, first); err != nil {
 		return err
 	}
 	if frame.Stack != "" {
@@ -370,7 +376,7 @@ func (f *logFormatter) emitLogText(frame logFrame) error {
 			if strings.TrimSpace(line) == "" {
 				continue
 			}
-			if _, err := fmt.Fprintln(os.Stdout, "  "+line); err != nil {
+			if _, err := fmt.Fprintln(f.out, "  "+line); err != nil {
 				return err
 			}
 		}
@@ -390,7 +396,7 @@ func (f *logFormatter) emitMarker(kind string, data json.RawMessage) error {
 	// Plain-text markers go to stderr so scripts piping stdout keep
 	// seeing only log bodies.
 	msg := fmt.Sprintf("[log] %s %s", kind, string(data))
-	_, err := fmt.Fprintln(os.Stderr, msg)
+	_, err := fmt.Fprintln(f.errw, msg)
 	return err
 }
 
@@ -404,7 +410,7 @@ func (f *logFormatter) reconnect(delay time.Duration, reason string) {
 		_ = f.writeNDJSON(obj)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "[log] disconnected (%s) — reconnecting in %s…\n", reason, delay)
+	_, _ = fmt.Fprintf(f.errw, "[log] disconnected (%s) — reconnecting in %s…\n", reason, delay)
 }
 
 func (f *logFormatter) notice(msg string) {
@@ -412,7 +418,7 @@ func (f *logFormatter) notice(msg string) {
 		_ = f.writeNDJSON(map[string]interface{}{"kind": "notice", "message": msg})
 		return
 	}
-	fmt.Fprintln(os.Stderr, "[log] "+msg)
+	_, _ = fmt.Fprintln(f.errw, "[log] "+msg)
 }
 
 func (f *logFormatter) writeNDJSON(obj map[string]interface{}) error {
@@ -420,7 +426,7 @@ func (f *logFormatter) writeNDJSON(obj map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stdout.Write(append(b, '\n')); err != nil {
+	if _, err := f.out.Write(append(b, '\n')); err != nil {
 		return err
 	}
 	return nil
