@@ -88,6 +88,9 @@ _udit_complete() {
         project)
             COMPREPLY=( $(compgen -W "info validate preflight" -- "$cur") )
             return ;;
+        test)
+            COMPREPLY=( $(compgen -W "run list" -- "$cur") )
+            return ;;
         profiler)
             COMPREPLY=( $(compgen -W "hierarchy enable disable status clear" -- "$cur") )
             return ;;
@@ -161,6 +164,10 @@ _udit() {
         project)
             subs=('info:Project summary' 'validate:Scan for missing scripts + issues' 'preflight:Validate + build readiness')
             _describe 'project action' subs
+            return ;;
+        test)
+            subs=('run:Execute tests' 'list:Enumerate tests without running')
+            _describe 'test action' subs
             return ;;
         profiler)
             subs=('hierarchy:Sample hierarchy' 'enable:Start recording' 'disable:Stop recording' 'status:Show state' 'clear:Clear frames')
@@ -241,6 +248,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
         'prefab'     { @('instantiate', 'unpack', 'apply', 'find-instances') }
         'tx'         { @('begin', 'commit', 'rollback', 'status') }
         'project'    { @('info', 'validate', 'preflight') }
+        'test'       { @('run', 'list') }
         'profiler'   { @('hierarchy', 'enable', 'disable', 'status', 'clear') }
         'completion' { @('bash', 'zsh', 'powershell', 'fish') }
         '--port'     { @() }
@@ -298,6 +306,7 @@ complete -c udit -n "__fish_seen_subcommand_from asset"      -a "find inspect de
 complete -c udit -n "__fish_seen_subcommand_from prefab"     -a "instantiate unpack apply find-instances"
 complete -c udit -n "__fish_seen_subcommand_from tx"         -a "begin commit rollback status"
 complete -c udit -n "__fish_seen_subcommand_from project"    -a "info validate preflight"
+complete -c udit -n "__fish_seen_subcommand_from test"       -a "run list"
 complete -c udit -n "__fish_seen_subcommand_from profiler"   -a "hierarchy enable disable status clear"
 complete -c udit -n "__fish_seen_subcommand_from completion" -a "bash zsh powershell fish"
 

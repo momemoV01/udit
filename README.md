@@ -618,18 +618,30 @@ udit profiler clear
 
 ### Run Tests
 
-Run EditMode and PlayMode tests via the Unity Test Framework.
+Run EditMode and PlayMode tests via the Unity Test Framework, plus enumerate them without running.
 
 ```bash
 # Run EditMode tests (default)
-udit test
+udit test run               # or the back-compat alias: `udit test`
 
 # Run PlayMode tests
-udit test --mode PlayMode
+udit test run --mode PlayMode
 
-# Filter by test name (substring match)
-udit test --filter MyTestClass
+# Filter by full test name (substring matches the TestRunnerApi test path)
+udit test run --filter MyNamespace.MyTests
+
+# Also write a JUnit XML report (CI-friendly). Path is project-root-relative
+# or absolute; written after the run completes.
+udit test run --mode PlayMode --output test-results/playmode.xml
+
+# Enumerate tests without running any — useful for discovery before filtering
+udit test list
+udit test list --mode PlayMode
 ```
+
+`test list` returns `{ mode, total, tests[] }` with `full_name / name / class_name / type_info / run_state` per leaf. Use `full_name` as the value for `--filter` on a subsequent `test run`.
+
+JUnit XML output is compatible with GitHub Actions / GitLab CI JUnit parsers out of the box. Failed tests carry the Unity failure message + stack trace inside `<failure>`; skipped/inconclusive map to `<skipped/>`.
 
 Requires the Unity Test Framework package. PlayMode tests trigger a domain reload — the CLI polls for results automatically.
 

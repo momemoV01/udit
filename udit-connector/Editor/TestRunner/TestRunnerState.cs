@@ -22,9 +22,13 @@ namespace UditConnector.TestRunner
             AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
         }
 
-        public static void MarkPending(int port, string filter)
+        public static void MarkPending(int port, string filter, string output = null)
         {
-            var pending = new { port, filter = filter ?? "" };
+            // `output` is the JUnit XML target path if the original run was
+            // invoked with --output. We persist it alongside port/filter so
+            // the callback reattached after a PlayMode domain reload still
+            // writes the XML file the caller asked for.
+            var pending = new { port, filter = filter ?? "", output = output ?? "" };
             try
             {
                 Directory.CreateDirectory(RunTests.StatusDir);
@@ -54,29 +58,29 @@ namespace UditConnector.TestRunner
                     var pending = JObject.Parse(json);
                     var port   = pending["port"]?.Value<int>() ?? 0;
                     var filter = pending["filter"]?.Value<string>();
+                    var output = pending["output"]?.Value<string>();
 
                     if (port == 0) continue;
 
-                    ReattachCallbacks(port, filter);
+                    ReattachCallbacks(port, filter, output);
                 }
             }
             catch { }
         }
 
-        static void ReattachCallbacks(int port, string filter)
+        static void ReattachCallbacks(int port, string filter, string output)
         {
-            var passed  = new List<string>();
-            var failed  = new List<string>();
-            var skipped = new List<string>();
+            var records = new List<RunTests.TestRecord>();
 
             var api = ScriptableObject.CreateInstance<TestRunnerApi>();
             var callbacks = new RunTests.TestCallbacks(
-                onResult: r => RunTests.CollectResult(r, passed, failed, skipped),
+                onResult: r => RunTests.CollectResult(r, records),
                 onFinished: _ =>
                 {
                     Object.DestroyImmediate(api);
                     ClearPending(port);
-                    RunTests.WriteResultsFile(port, passed, failed, skipped);
+                    if (!string.IsNullOrEmpty(output)) RunTests.TryWriteJUnit(output, records);
+                    RunTests.WriteResultsFile(port, records, output);
                 }
             );
 

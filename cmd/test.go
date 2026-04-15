@@ -27,6 +27,27 @@ func (s *suppressWriter) Write(p []byte) (int, error) {
 }
 
 func testCmd(args []string, send sendFn, port int) (*client.CommandResponse, error) {
+	// Subcommand routing. Bare `udit test [--flags]` keeps acting as
+	// `udit test run [--flags]` for backward compatibility — agents with
+	// scripts from v0.4.x and earlier still work without edits.
+	if len(args) == 0 || strings.HasPrefix(args[0], "--") {
+		return testRun(args, send, port)
+	}
+
+	action := args[0]
+	rest := args[1:]
+
+	switch action {
+	case "run":
+		return testRun(rest, send, port)
+	case "list":
+		return testList(rest, send)
+	default:
+		return nil, fmt.Errorf("unknown test action: %s\nAvailable: run, list", action)
+	}
+}
+
+func testRun(args []string, send sendFn, port int) (*client.CommandResponse, error) {
 	flags := parseSubFlags(args)
 
 	mode := "EditMode"
@@ -43,6 +64,12 @@ func testCmd(args []string, send sendFn, port int) (*client.CommandResponse, err
 	}
 	if filter, ok := flags["filter"]; ok {
 		params["filter"] = filter
+	}
+	if output, ok := flags["output"]; ok {
+		// JUnit XML is written alongside the JSON response; the path may be
+		// absolute OR project-root-relative. The server resolves relative
+		// paths against the Unity project root (parent of Assets/).
+		params["output"] = output
 	}
 
 	resp, err := send("run_tests", params)
@@ -75,6 +102,30 @@ func testCmd(args []string, send sendFn, port int) (*client.CommandResponse, err
 	defer log.SetOutput(original)
 
 	return pollTestResults(port)
+}
+
+func testList(args []string, send sendFn) (*client.CommandResponse, error) {
+	flags := parseSubFlags(args)
+
+	params := map[string]interface{}{}
+	if m, ok := flags["mode"]; ok {
+		if m != "EditMode" && m != "PlayMode" {
+			return nil, fmt.Errorf("--mode must be EditMode or PlayMode, got: %s", m)
+		}
+		params["mode"] = m
+	}
+
+	resp, err := send("list_tests", params)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.Success && strings.Contains(resp.Message, "Unknown command") {
+		return nil, fmt.Errorf(
+			"'list_tests' is not available.\n" +
+				"Install the Unity Test Framework package:\n" +
+				"  Window > Package Manager > search 'Test Framework' > Install")
+	}
+	return resp, nil
 }
 
 func pollTestResults(port int) (*client.CommandResponse, error) {

@@ -479,9 +479,11 @@ Reserialize:
     reserialize Assets/Prefabs/A.prefab Assets/Prefabs/B.prefab
 
 Tests:
-  test                            Run EditMode tests (default)
-  test --mode PlayMode            Run PlayMode tests
-  test --filter <name>            Filter by namespace, class, or full test name
+  test run [--mode X]             Run EditMode (default) or PlayMode tests
+  test run --filter <name>        Filter by namespace, class, or full test name
+  test run --output junit.xml     Also write JUnit XML report next to the results
+  test list [--mode X]            Enumerate tests without running them
+  test                            Back-compat alias for ` + "`test run`" + `
 
 Profiler:
   profiler hierarchy              Top-level profiler samples (last frame)
@@ -1116,25 +1118,50 @@ Examples:
   udit profiler enable
 `)
 	case "test":
-		fmt.Print(`Usage: udit test [options]
+		fmt.Print(`Usage: udit test <run|list> [options]
+       udit test [options]        (back-compat alias for ` + "`test run`" + `)
 
-Run Unity tests via the Test Runner API.
+Run or enumerate Unity tests via the Test Runner API.
 
-Options:
-  --mode <EditMode|PlayMode>    Test mode (default: EditMode)
-  --filter <name>               Filter by namespace, class, or full test name
-                                Must be the full path (e.g. MyNamespace.MyClass)
+Subcommands:
+  run [--mode X] [--filter P] [--output junit.xml]
+      Execute tests. EditMode holds the connection open and returns
+      results directly; PlayMode returns immediately and polls a status
+      file (domain-reload safe).
+      --mode <EditMode|PlayMode>    Test mode (default: EditMode)
+      --filter <name>               Namespace / class / full test name.
+                                    Must be the full path (e.g.
+                                    MyNamespace.MyClass or
+                                    MyNamespace.MyClass.SpecificTest).
+      --output <path>               Also write a JUnit XML report.
+                                    Path is absolute or project-root-
+                                    relative. Written after the run so
+                                    CI systems can consume it.
 
-EditMode tests hold the connection open and return results directly.
-PlayMode tests return immediately and poll a results file (domain reload safe).
+  list [--mode X]
+      List every test in the requested mode without running any. Returns
+      { mode, total, tests[] } where each test has { full_name, name,
+      class_name, type_info, run_state }. Use to discover test names
+      before running, or to pick one by full_name for --filter.
 
 Requires the Unity Test Framework package (com.unity.test-framework).
 
 Examples:
-  udit test
-  udit test --mode PlayMode
-  udit test --filter MyNamespace.MyTests
-  udit test --mode EditMode --filter MyNamespace.MyTests.SpecificTest
+  udit test                                           # EditMode run (back-compat)
+  udit test run --mode PlayMode
+  udit test run --filter MyNamespace.MyTests
+  udit test run --mode PlayMode --output test-results/playmode.xml
+  udit test list                                      # EditMode discovery
+  udit test list --mode PlayMode --json
+
+Notes:
+  - JUnit XML output is compatible with GitHub Actions / GitLab CI
+    junit parsers out of the box. Failed tests include the Unity
+    failure message + stack in <failure>, skipped/inconclusive in
+    <skipped>.
+  - list does NOT execute tests — it just walks the TestRunnerApi
+    test tree. Safe to call on untrusted code that would otherwise
+    misbehave when run.
 `)
 	case "list":
 		fmt.Print(`Usage: udit list

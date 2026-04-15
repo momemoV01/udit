@@ -618,20 +618,32 @@ udit profiler clear
 
 ### 테스트 실행
 
-Unity Test Framework로 EditMode와 PlayMode 테스트 실행.
+Unity Test Framework로 EditMode와 PlayMode 테스트 실행 + 실행 없이 enumerate.
 
 ```bash
 # EditMode 테스트 실행 (기본)
-udit test
+udit test run               # 또는 back-compat alias: `udit test`
 
 # PlayMode 테스트 실행
-udit test --mode PlayMode
+udit test run --mode PlayMode
 
-# 테스트 이름으로 필터 (substring match)
-udit test --filter MyTestClass
+# 전체 테스트 이름으로 필터 (TestRunnerApi의 test path 기준 substring)
+udit test run --filter MyNamespace.MyTests
+
+# JUnit XML 리포트 동시 작성 (CI-friendly). 경로는 프로젝트 루트 상대 또는 절대;
+# 실행 완료 후 작성됨.
+udit test run --mode PlayMode --output test-results/playmode.xml
+
+# 실행 없이 테스트 enumerate — 필터링 전 discovery에 유용
+udit test list
+udit test list --mode PlayMode
 ```
 
-Unity Test Framework 패키지 필요. PlayMode 테스트는 도메인 리로드를 트리거 — CLI가 결과를 자동 폴링합니다.
+`test list`는 `{ mode, total, tests[] }`를 반환하며 각 leaf는 `full_name / name / class_name / type_info / run_state`. `full_name`을 후속 `test run`의 `--filter` 값으로 사용 가능.
+
+JUnit XML 출력은 GitHub Actions / GitLab CI의 JUnit 파서와 그대로 호환. 실패 테스트는 Unity 실패 메시지 + 스택 트레이스가 `<failure>` 안에 들어가고, skipped/inconclusive는 `<skipped/>`로 매핑.
+
+Unity Test Framework 패키지 필요. PlayMode 테스트는 도메인 리로드 트리거 — CLI가 결과를 자동 폴링.
 
 ### Tool 목록
 
