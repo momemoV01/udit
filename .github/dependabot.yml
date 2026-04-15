@@ -12,12 +12,19 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    # upload-artifact and download-artifact must ship as a pair — the
+    # API between them changed across major versions, so mixing majors
+    # breaks the release workflow. Upstream releases the two actions on
+    # independent cadences (e.g. download@v8 shipped while upload was
+    # still at v7), so we block their automatic major bumps entirely
+    # and bump the pair by hand when both upstream majors exist.
+    # The `artifact-actions` group still bundles minor / patch bumps.
+    ignore:
+      - dependency-name: "actions/upload-artifact"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "actions/download-artifact"
+        update-types: ["version-update:semver-major"]
     groups:
-      # upload-artifact and download-artifact must ship as a pair
-      # (the API between them changed across major versions, so
-      # mixing majors breaks the release workflow). Bundling them
-      # into one PR means Dependabot waits for both upstream majors
-      # to exist before the bump lands.
       artifact-actions:
         patterns:
           - "actions/upload-artifact"
