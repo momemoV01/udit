@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/momemoV01/udit/internal/client"
 	"github.com/momemoV01/udit/internal/watch"
 	"gopkg.in/yaml.v3"
 )
@@ -183,11 +184,16 @@ loop:
 	return nil
 }
 
-// loadWatchConfig reads a .udit.yaml either at an explicit path (via
-// --config) or via the existing walk-up discovery. Returns the parsed
-// WatchCfg + discovered config path. Fails with a user-friendly error if
-// no config is found (watch is mandatory config-driven in v0.6.0 MVP;
-// ad-hoc mode deferred to v0.6.x).
+// loadWatchConfig finds and parses a .udit.yaml. Mirrors init's 4-layer
+// strategy so `udit watch` and `udit init` agree on "which project":
+//
+//  1. --config PATH — explicit, wins over everything.
+//  2. Connected Unity instance (via DiscoverInstance) — same source of
+//     truth as `udit status`. Lets users run `udit watch` from any
+//     shell (System32, a detached tab) as long as the editor's up.
+//  3. Walk up from cwd for a .udit.yaml (v0.6.0 behavior).
+//  4. Error — watch is mandatory config-driven in v0.6.0 MVP; ad-hoc
+//     mode deferred to v0.6.x. Message points at `udit init --watch`.
 func loadWatchConfig(explicitPath string) (watch.WatchCfg, string, error) {
 	if explicitPath != "" {
 		abs, err := filepath.Abs(explicitPath)
@@ -205,11 +211,40 @@ func loadWatchConfig(explicitPath string) (watch.WatchCfg, string, error) {
 	if err != nil {
 		return watch.WatchCfg{}, "", err
 	}
-	cfg, cfgPath := LoadConfig(cwd)
-	if cfg == nil {
-		return watch.WatchCfg{}, "", fmt.Errorf("no .udit.yaml found walking up from %s — `watch` requires a config in v0.6.0 (ad-hoc mode ships in v0.6.x)", cwd)
+
+	// Layer 2: connected Unity instance. The "override" sentinel (emitted
+	// when global --port is set and DiscoverInstance skips the heartbeat
+	// read) is filtered out — fall through to filesystem in that case.
+	var connectedProject string
+	if inst, derr := client.DiscoverInstance(flagProject, flagPort); derr == nil &&
+		inst.ProjectPath != "" && inst.ProjectPath != "override" {
+		connectedProject = filepath.FromSlash(inst.ProjectPath)
+		candidate := filepath.Join(connectedProject, ".udit.yaml")
+		if _, statErr := os.Stat(candidate); statErr == nil {
+			cfg, lerr := loadConfigFile(candidate)
+			if lerr != nil {
+				return watch.WatchCfg{}, "", fmt.Errorf("load %s: %w", candidate, lerr)
+			}
+			return cfg.Watch, candidate, nil
+		}
 	}
-	return cfg.Watch, cfgPath, nil
+
+	// Layer 3: walk up from cwd.
+	if cfg, cfgPath := LoadConfig(cwd); cfg != nil {
+		return cfg.Watch, cfgPath, nil
+	}
+
+	// Layer 4: no config found anywhere — actionable guidance. lint
+	// (ST1005) forbids trailing punctuation on errors, so the "try
+	// this" hint prints to stderr first.
+	fmt.Fprintln(os.Stderr, "  Run `udit init --watch` to generate one, or pass --config PATH.")
+	where := fmt.Sprintf("walking up from %s", cwd)
+	if connectedProject != "" {
+		where = fmt.Sprintf("%s; %s (connected Unity project — no .udit.yaml there)", where, connectedProject)
+	} else {
+		where = fmt.Sprintf("%s; no running Unity detected", where)
+	}
+	return watch.WatchCfg{}, "", fmt.Errorf("no .udit.yaml found (%s)", where)
 }
 
 // detectProjectRoot heuristic: walk up from `start` looking for a

@@ -747,15 +747,25 @@ The `--watch` variant ships two sample hooks (`compile_cs` and
 `reserialize_yaml`) that work as-is — just edit the `paths:` list to
 scope them.
 
-### Watch (v0.6.0+)
+### Watch (v0.6.0+ — v0.6.4 config resolution)
 
 `udit watch` is a long-running file-system watcher that runs pre-defined
 udit sub-commands when matching files change. Zero LLM calls — this is
 local, CI-style automation inside the editor loop.
 
+Config resolution order (same strategy as `udit init`):
+1. `--config PATH` — explicit override.
+2. **Connected Unity instance** — `<projectPath>/.udit.yaml`
+   if it exists. Honors global `--port` / `--project`.
+3. Walk up from cwd for a `.udit.yaml`.
+4. Error with `udit init --watch` hint.
+
 ```bash
-# With a .udit.yaml in project root (or any parent dir)
+# From anywhere — Unity's projectPath locates the config
 udit watch
+
+# Explicit config file
+udit watch --config ./my.yaml
 
 # Preview without executing hooks
 udit watch --no-exec

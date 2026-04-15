@@ -741,13 +741,22 @@ udit init --force --watch     # 기존 파일 덮어쓰기
 
 `--watch` 옵션은 샘플 hook 두 개 (`compile_cs`, `reserialize_yaml`)를 포함 — `paths:` 리스트만 손보면 그대로 동작.
 
-### Watch (v0.6.0+)
+### Watch (v0.6.0+ — v0.6.4 config 해석)
 
 `udit watch`는 `.udit.yaml`에 정의된 후크를 파일 변경 시점에 자동 실행하는 장기 실행 워처입니다. LLM 호출 없이 에디터 루프 안에서 동작하는 로컬 CI 스타일 자동화.
 
+Config 해석 순서 (`udit init`과 동일 전략):
+1. `--config PATH` — 명시 override.
+2. **연결된 Unity instance** — `<projectPath>/.udit.yaml` 존재 시 사용. 전역 `--port` / `--project` 존중.
+3. cwd에서 walk-up으로 `.udit.yaml` 찾기.
+4. 못 찾으면 에러 + `udit init --watch` 안내.
+
 ```bash
-# .udit.yaml이 프로젝트 루트(또는 상위 디렉토리)에 있어야 함
+# 아무 디렉토리에서 — Unity의 projectPath가 config 위치를 알려줌
 udit watch
+
+# 명시 config 파일
+udit watch --config ./my.yaml
 
 # 실제 실행 없이 어떤 명령이 돌지만 출력
 udit watch --no-exec

@@ -4,6 +4,45 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-04-15
+
+Brings `udit watch` in line with the v0.6.3 `udit init` change: config
+resolution now tries the connected Unity instance first. Reported: ran
+`udit init --watch` from System32, got the scaffold at the right place,
+then `udit watch` failed because it only walked up from cwd (still
+System32). Both commands now share the same 4-layer strategy.
+
+### Changed
+
+`udit watch` config resolution (mirrors init exactly):
+
+1. `--config PATH` — explicit override (unchanged).
+2. **Connected Unity instance** — if `<inst.ProjectPath>/.udit.yaml`
+   exists, load it. Honors global `--port` / `--project` just like
+   every other udit command. `ProjectPath="override"` sentinel (emitted
+   when `--port` skips the heartbeat read) is filtered out and falls
+   through.
+3. Walk up from cwd for a `.udit.yaml` (v0.6.0 behavior).
+4. Error — actionable message listing both layers that were checked
+   and pointing at `udit init --watch` / `--config PATH`:
+   ```
+   Error: no .udit.yaml found (walking up from C:\WINDOWS\System32;
+     C:\Projects\MyGame (connected Unity project — no .udit.yaml there))
+     Run `udit init --watch` to generate one, or pass --config PATH.
+   ```
+
+### Tests
+
+`cmd/watch_test.go` added:
+- `TestLoadWatchConfig_UsesConnectedInstance` — live heartbeat + config
+  at the project root → used over cwd walk-up.
+- `TestLoadWatchConfig_FallsBackToWalkUp` — heartbeat present but no
+  config in the project → walk-up takes over.
+- `TestLoadWatchConfig_ErrorListsBothLayers` — nothing found anywhere;
+  error names both the walk-up path and the missing-Unity state.
+- `TestLoadWatchConfig_ExplicitConfigWins` — `--config` bypasses the
+  instance layer.
+
 ## [0.6.3] - 2026-04-15
 
 Extends `udit init`'s target resolution with a new first-choice layer:

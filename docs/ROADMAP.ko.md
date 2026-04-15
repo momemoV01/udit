@@ -840,6 +840,7 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] v0.6.1 patch — `udit init` scaffold (watch UX gap 해소) (2026-04-15)
 - [x] v0.6.2 patch — `udit init` 기본 target을 Unity 프로젝트 루트 자동 탐지로 (cwd 기반 → walk-up) (2026-04-15)
 - [x] v0.6.3 patch — `udit init` 기본 target 해결에 **연결된 Unity instance** 계층 추가 (`udit status` 기반, `--port`/`--project` 존중) (2026-04-15)
+- [x] v0.6.4 patch — `udit watch` config 해석도 **연결된 Unity instance** 계층 추가 (init과 동일 4단 체인) (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
 - [ ] **Phase 5.2 (log tail -f)** — 콘솔 로그 SSE 스트리밍 (connector C# SSE 엔드포인트 필요)
 - [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
