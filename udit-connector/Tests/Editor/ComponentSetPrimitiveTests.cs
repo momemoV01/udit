@@ -77,23 +77,7 @@ namespace UditConnector.Tests
             Assert.IsFalse(InvokeTryParseVector2("1,foo", out _));   // bad float
         }
 
-        [Test]
-        public void Vector3_ParsesCommaSeparated()
-        {
-            Assert.IsTrue(InvokeTryParseVector3("1,2,3", out var v));
-            Assert.AreEqual(new Vector3(1, 2, 3), v);
-
-            Assert.IsTrue(InvokeTryParseVector3("0.5,-0.5,0", out v));
-            Assert.AreEqual(new Vector3(0.5f, -0.5f, 0), v);
-        }
-
-        [Test]
-        public void Vector3_RejectsWrongArity()
-        {
-            Assert.IsFalse(InvokeTryParseVector3("1,2", out _));
-            Assert.IsFalse(InvokeTryParseVector3("1,2,3,4", out _));
-            Assert.IsFalse(InvokeTryParseVector3("", out _));
-        }
+        // Vector3 parser lives in ParamCoercion now — see Vector3ParsingTests.
 
         [Test]
         public void Vector4_ParsesCommaSeparated()
@@ -261,18 +245,6 @@ namespace UditConnector.Tests
             var args = new object[] { s, default(Vector2) };
             var ok = (bool)m.Invoke(null, args);
             result = (Vector2)args[1];
-            return ok;
-        }
-
-        static bool InvokeTryParseVector3(string s, out Vector3 result)
-        {
-            var m = typeof(ManageComponent).GetMethod(
-                "TryParseVector3",
-                BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.IsNotNull(m, "TryParseVector3 not found — renamed?");
-            var args = new object[] { s, default(Vector3) };
-            var ok = (bool)m.Invoke(null, args);
-            result = (Vector3)args[1];
             return ok;
         }
 

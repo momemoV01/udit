@@ -273,7 +273,7 @@ namespace UditConnector.Tools
             Vector3 pos = Vector3.zero;
             if (!string.IsNullOrEmpty(posStr))
             {
-                if (!TryParseVector3(posStr, out pos))
+                if (!ParamCoercion.TryParseVector3(posStr, out pos))
                     return new ErrorResponse(ErrorCodes.InvalidParams,
                         $"--pos must be 'x,y,z' floats, got '{posStr}'.");
             }
@@ -576,18 +576,6 @@ namespace UditConnector.Tools
             return false;
         }
 
-        static bool TryParseVector3(string s, out Vector3 v)
-        {
-            v = default;
-            if (string.IsNullOrEmpty(s)) return false;
-            var parts = s.Split(',');
-            if (parts.Length != 3) return false;
-            if (!float.TryParse(parts[0].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x)) return false;
-            if (!float.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y)) return false;
-            if (!float.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z)) return false;
-            v = new Vector3(x, y, z);
-            return true;
-        }
 
         static void MarkActiveSceneDirty()
         {

@@ -748,7 +748,7 @@ namespace UditConnector.Tools
 
         static object SetTransformVirtualField(Transform t, string field, string value, bool dryRun, string goId)
         {
-            if (!TryParseVector3(value, out var v))
+            if (!ParamCoercion.TryParseVector3(value, out var v))
                 return new ErrorResponse(ErrorCodes.InvalidParams,
                     $"Transform.{field} expects 'x,y,z' floats, got '{value}'.");
 
@@ -844,7 +844,7 @@ namespace UditConnector.Tools
 
                 case SerializedPropertyType.Vector3:
                     oldJsonValue = new { x = prop.vector3Value.x, y = prop.vector3Value.y, z = prop.vector3Value.z };
-                    if (!TryParseVector3(value, out _))
+                    if (!ParamCoercion.TryParseVector3(value, out _))
                     { error = $"Field is Vector3, expected 'x,y,z', got '{value}'."; return false; }
                     return true;
 
@@ -956,7 +956,7 @@ namespace UditConnector.Tools
                     prop.vector2Value = v2;
                     break;
                 case SerializedPropertyType.Vector3:
-                    TryParseVector3(value, out var v3);
+                    ParamCoercion.TryParseVector3(value, out var v3);
                     prop.vector3Value = v3;
                     break;
                 case SerializedPropertyType.Vector4:
@@ -1087,18 +1087,6 @@ namespace UditConnector.Tools
             if (!float.TryParse(parts[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var x)) return false;
             if (!float.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var y)) return false;
             v = new Vector2(x, y); return true;
-        }
-
-        static bool TryParseVector3(string s, out Vector3 v)
-        {
-            v = default;
-            if (string.IsNullOrEmpty(s)) return false;
-            var parts = s.Split(',');
-            if (parts.Length != 3) return false;
-            if (!float.TryParse(parts[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var x)) return false;
-            if (!float.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var y)) return false;
-            if (!float.TryParse(parts[2].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var z)) return false;
-            v = new Vector3(x, y, z); return true;
         }
 
         static bool TryParseVector4(string s, out Vector4 v)
