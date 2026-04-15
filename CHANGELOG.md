@@ -4,6 +4,27 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+### Fixed
+
+**udit-connector .meta GUIDs permanently separated from upstream
+unity-cli-connector.** udit forked from unity-cli without renaming
+.meta GUIDs, so installing both packages in the same Unity project
+caused a GUID conflict. Unity auto-resolved by reassigning all 27
+udit-connector GUIDs and writing them back to the file: source —
+which kept reappearing as a dirty working tree on every developer
+machine that had both connectors installed.
+
+Adopting Unity's new GUIDs as canonical so the two packages can
+coexist in the same project without further conflict. Connector
+bumped `0.6.1` → `0.6.2`.
+
+Affected files: 27 .meta files under `udit-connector/Editor/` plus
+`udit-connector/package.json.meta`. Asset references that survive
+this change are unaffected because [UditTool] classes are static
+(no GameObject MonoBehaviour references) and the asmdef GUIDs
+weren't depended on by external assemblies. CLI users are
+unaffected entirely — Go binary unchanged, no CLI tag cut.
+
 ## [0.4.3] - 2026-04-15
 
 Interim patch covering the first two slices of Phase 4 (Automate) —
