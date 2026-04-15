@@ -745,6 +745,26 @@ Unity Test Framework 패키지 필요. PlayMode 테스트는 도메인 리로드
 udit list
 ```
 
+### Config 점검 (v0.8.1+)
+
+`udit config`은 로드된 `.udit.yaml`을 점검하는 작은 네임스페이스 — 에이전트가 "이 세션이 실제로 쓴 config는 뭐지?" 디버깅할 때, 그리고 사람이 처음 세팅할 때 유용.
+
+```bash
+udit config show                 # 읽기 좋은 layout: globals, watch, build, run
+udit config show --json          # 기계 포맷 (stdout NDJSON 객체)
+udit config show --yaml          # 로드된 yaml 재출력 (경로는 주석)
+
+udit config validate             # 스키마 + 의미론 체크; 에러 시 exit 1
+udit config validate --json
+
+udit config path                 # 절대 경로만 출력 (스크립팅용)
+udit config path --json
+
+udit config edit                 # $VISUAL / $EDITOR로 열기 (Windows는 notepad)
+```
+
+`validate`는 실제로 자주 겪는 실수 포착: watch hook이 `$FILE`과 `$FILES` 동시 사용, build preset에 `target`/`output` 누락, run task에 steps 빈 상태. `udit watch` 시작 시 쓰는 `watch.WatchCfg.Validate()`를 그대로 호출 — 두 표면이 같은 정답 공유.
+
 ### 프로젝트 스캐폴드 (v0.6.1+)
 
 `udit init`은 **Unity 프로젝트 루트**에 `.udit.yaml` 스캐폴드를 떨어뜨립니다. 경로 결정 순서 (먼저 맞는 것 사용):

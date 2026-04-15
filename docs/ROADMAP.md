@@ -857,6 +857,7 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] **Phase 5.2 착수 — `log tail -f` SSE 스트리밍** (2026-04-15) — Connector 0.8.0, `/logs/stream` endpoint + `Application.logMessageReceived` subscription + ring buffer + multi-client fanout + 도메인 리로드 재접속 + NDJSON/color 출력
 - [x] v0.7.1 patch — `build player --il2cpp` + `build player --config <name>` (Phase 4c 때 보류했던 것, Connector 0.8.1) (2026-04-15)
 - [x] **Phase 5.3 착수 — `udit run`** (2026-04-15) — `.udit.yaml run.tasks.<name>` 스크립트 러너. 순차 + fail-fast/continue-on-error + 재귀 (depends_on 대신) + cycle 감지 + NDJSON. v0.8.0. Connector 변경 없음 (순수 CLI)
+- [x] v0.8.1 patch — `udit config` namespace (show / validate / path / edit) — config UX 완결 (2026-04-15)
 - [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
 - [ ] `udit watch --path P --on-change C` — ad-hoc 모드 (config 없이), v0.6.x 증분
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)

@@ -4,6 +4,55 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-04-15
+
+Adds `udit config` — a small namespace for inspecting the loaded
+`.udit.yaml`. Closes the Tier B1 item on the pre-Public checklist;
+first natural companion to `udit init` (scaffold) since v0.6.1.
+Pure CLI; no Connector bump.
+
+### Added
+
+**`udit config` — 4 subcommands over the parsed config**
+
+```bash
+udit config show                 # pretty layout: globals / exec / watch / build / run
+udit config show --json          # machine format
+udit config show --yaml          # raw yaml re-emit with loaded path as a comment
+udit config validate             # schema + semantic checks, exit 1 on error
+udit config validate --json
+udit config path                 # absolute path of the loaded file
+udit config path --json
+udit config edit                 # open in $VISUAL / $EDITOR ($ → notepad on Windows)
+```
+
+### Implementation
+
+- `cmd/config_cmd.go` (new, ~400 lines): single dispatcher + one
+  handler per subcommand. `validate` reuses `watch.WatchCfg.Validate()`
+  for the watch section (both `udit watch` startup and this command
+  agree on correctness); build + run sections get lightweight
+  in-place checks (missing target/output on presets, empty steps on
+  tasks).
+- `cmd/root.go`:
+  * `loadedConfigPath` global populated alongside `loadedConfig` so
+    `config path` / `show` / `edit` can surface it.
+  * `case "config":` dispatch + overview help + `printTopicHelp`.
+- Editor resolution: `$VISUAL` → `$EDITOR` → `notepad` (Windows-only
+  fallback). The editor string is parsed as a shell-like command so
+  `EDITOR="code --wait"` works.
+
+### Tests
+
+- `cmd/config_cmd_test.go`: swapConfig helper stashes the global
+  config for the duration of a test. Covers:
+  * show pretty vs JSON vs no-config fallback.
+  * validate OK / build missing target / run empty steps / watch
+    `$FILE` + `$FILES` conflict / JSON shape.
+  * path loaded / missing / JSON.
+  * edit no-config error path.
+  * Dispatcher unknown subcommand + no-args help.
+
 ## [0.8.0] - 2026-04-15
 
 Phase 5.3 lands: `udit run` — script runner over tasks defined in

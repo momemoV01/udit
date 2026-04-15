@@ -37,10 +37,12 @@ func Execute() error {
 	}
 
 	// Load .udit.yaml (walk up from cwd). Apply only fields that the user
-	// did NOT set on the CLI, so explicit flags always win.
+	// did NOT set on the CLI, so explicit flags always win. Path is kept
+	// so `udit config path` / `udit config show` can surface it.
 	if cwd, err := os.Getwd(); err == nil {
-		if cfg, _ := LoadConfig(cwd); cfg != nil {
+		if cfg, path := LoadConfig(cwd); cfg != nil {
 			applyConfig(cfg)
+			loadedConfigPath = path
 		}
 	}
 
@@ -81,6 +83,8 @@ func Execute() error {
 		return logCmd(subArgs, flagJSON)
 	case "run":
 		return runCmd(subArgs, flagJSON)
+	case "config":
+		return configCmd(subArgs, flagJSON)
 	case "watch":
 		// watch is a long-running command that doesn't require Unity to
 		// be alive at startup — hooks may run when Unity is off (e.g.
@@ -196,6 +200,11 @@ func Execute() error {
 // (e.g. exec usings injection) can see project-wide settings without being
 // passed an extra parameter through every call site.
 var loadedConfig *Config
+
+// loadedConfigPath is the absolute path of the .udit.yaml that supplied
+// `loadedConfig`. Empty when no config was found during walk-up. Used by
+// `udit config path` / `udit config show` / `udit config edit`.
+var loadedConfigPath string
 
 // applyConfig pushes config defaults into the global flag variables when the
 // CLI did not override them. CLI flags > config > built-in defaults.
@@ -559,6 +568,10 @@ Config:
   init --watch                  ... with a watch: section containing sample hooks
   init --force                  Overwrite an existing file
   init --output <path>          Write to a specific path
+  config show                   Print effective config (CLI + yaml merge)
+  config validate               Schema + semantic checks
+  config path                   Absolute path of the loaded .udit.yaml
+  config edit                   Open the config in $VISUAL / $EDITOR
 
 Log Streaming (v0.7.0+):
   log tail                      Stream Unity console messages live (SSE)
@@ -1453,6 +1466,8 @@ Examples:
 		fmt.Print(initHelp())
 	case "run":
 		fmt.Print(runHelp())
+	case "config":
+		fmt.Print(configHelp())
 	case "log":
 		fmt.Print(`Usage: udit log <subcommand> [options]
 

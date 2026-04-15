@@ -745,6 +745,32 @@ Requires the Unity Test Framework package. PlayMode tests trigger a domain reloa
 udit list
 ```
 
+### Config inspection (v0.8.1+)
+
+`udit config` is a small namespace for inspecting the loaded `.udit.yaml`
+— useful for agents debugging "which config did this session actually
+use?" and for human first-time setups.
+
+```bash
+udit config show                 # pretty layout: globals, watch, build, run
+udit config show --json          # machine format (NDJSON object on stdout)
+udit config show --yaml          # raw yaml re-emit (loaded path as a comment)
+
+udit config validate             # schema + semantic checks; exit 1 on error
+udit config validate --json
+
+udit config path                 # just the absolute path, for scripting
+udit config path --json
+
+udit config edit                 # open in $VISUAL / $EDITOR (notepad on Windows)
+```
+
+`validate` catches the real mistakes agents hit in practice: watch
+hook using both `$FILE` and `$FILES`, build preset missing `target` or
+`output`, run task with empty steps. Passes call to the same
+`watch.WatchCfg.Validate()` used at `udit watch` startup so both
+surfaces agree on correctness.
+
 ### Project scaffold (v0.6.1+)
 
 `udit init` drops a `.udit.yaml` scaffold at your **Unity project root**.
