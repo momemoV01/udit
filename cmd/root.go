@@ -77,6 +77,8 @@ func Execute() error {
 		return completionCmd(subArgs)
 	case "init":
 		return initCmd(subArgs)
+	case "log":
+		return logCmd(subArgs, flagJSON)
 	case "watch":
 		// watch is a long-running command that doesn't require Unity to
 		// be alive at startup — hooks may run when Unity is off (e.g.
@@ -553,6 +555,14 @@ Config:
   init --watch                  ... with a watch: section containing sample hooks
   init --force                  Overwrite an existing file
   init --output <path>          Write to a specific path
+
+Log Streaming (v0.7.0+):
+  log tail                      Stream Unity console messages live (SSE)
+  log tail --type error,warning Restrict log levels
+  log tail --since 5m           Backfill the last 5 minutes, then go live
+  log tail --filter "regex"     Client-side regex filter on messages
+  log tail --json               NDJSON output
+  log list                      Historical snapshot (alias for udit console)
 
 Watch:
   watch                         Run hooks from .udit.yaml on file changes
@@ -1406,6 +1416,25 @@ Examples:
 `)
 	case "init":
 		fmt.Print(initHelp())
+	case "log":
+		fmt.Print(`Usage: udit log <subcommand> [options]
+
+Subcommands:
+  tail       Live stream of Unity console messages. Implements Phase 5.2
+             per docs/ROADMAP.md — Server-Sent Events from the Connector,
+             auto-reconnect on domain reload, color-coded output when
+             stdout is a TTY, NDJSON mode when --json is set.
+  list       Historical snapshot of the current Unity console buffer.
+             Alias for ` + "`udit console`" + ` (same tool, same flags).
+
+Run ` + "`udit log <subcommand> --help`" + ` for per-subcommand flags.
+
+Examples:
+  udit log tail
+  udit log tail --type error,warning --since 2m
+  udit log tail --filter "NullReference" --json
+  udit log list --lines 50 --type error
+`)
 	case "watch":
 		fmt.Print(`Usage: udit watch [options]
 

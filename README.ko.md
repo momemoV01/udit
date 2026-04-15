@@ -741,6 +741,42 @@ udit init --force --watch     # 기존 파일 덮어쓰기
 
 `--watch` 옵션은 샘플 hook 두 개 (`compile_cs`, `reserialize_yaml`)를 포함 — `paths:` 리스트만 손보면 그대로 동작.
 
+### Log tail -f (v0.7.0+)
+
+`udit log tail`은 Unity 콘솔 메시지를 실시간 스트리밍하는 장기 실행 명령 — `udit console`의 스냅샷에 대응하는 live 버전. Connector의 Server-Sent Events를 사용, 도메인 리로드 시 자동 재접속.
+
+```bash
+# 기본: live 스트림, 모든 레벨, user 필터 stack trace, TTY 색상
+udit log tail
+
+# 레벨 제한 + 지난 5분 backfill 후 live 전환
+udit log tail --type error,warning --since 5m
+
+# 클라이언트 측 regex 필터
+udit log tail --filter "NullReference"
+
+# 에이전트/파이프라인용 NDJSON
+udit log tail --json | jq '.level == "error"'
+
+# 다중 클라이언트 — 두 터미널에서 동시에 tail 해도 둘 다 모든 로그 수신
+```
+
+플래그:
+
+| 플래그 | 의미 |
+|---|---|
+| `--type CSV` | `error,warning,log,assert,exception` (기본: 전부) |
+| `--stacktrace MODE` | `none` / `user` / `full` (기본: `user`) |
+| `--since DURATION` | 최근 N backfill (`5m`, `30s`, `1h30m`). 생략 시 live-only |
+| `--filter REGEX` | 클라이언트 측 regex; 매칭 안 되는 메시지 drop |
+| `--json` | NDJSON on stdout (또는 전역 `--json`) |
+| `--verbose` | stderr에 연결 상태 진단 출력 |
+| `--no-color` | stdout이 TTY여도 ANSI 비활성 |
+
+`udit log list`는 `udit console`의 동의어 — `log tail` 과 어휘 일관성. 기존 `udit console` 그대로 동작.
+
+스트리밍 전용 에러 코드: `UCI-004 StreamInterrupted` (재시도 가능), `UCI-006 InvalidStreamFilter` (flag 수정), `UCI-007 ConnectorTooOld` (Connector < 0.8.0). `docs/ERROR_CODES.ko.md` 참고.
+
 ### Watch (v0.6.0+ — v0.6.4 config 해석)
 
 `udit watch`는 `.udit.yaml`에 정의된 후크를 파일 변경 시점에 자동 실행하는 장기 실행 워처입니다. LLM 호출 없이 에디터 루프 안에서 동작하는 로컬 CI 스타일 자동화.

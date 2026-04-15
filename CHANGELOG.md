@@ -4,6 +4,114 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-15
+
+Phase 5.2 lands. `udit log tail` — a long-lived SSE stream of Unity
+console messages delivered as they happen. Complements `udit watch`
+(file-change automation) and rounds out Phase 5 (Stream) minus the
+`udit run` script runner still to come.
+
+Connector bumped to **0.8.0** — new `/logs/stream` HTTP endpoint,
+`Application.logMessageReceived` subscription, ring buffer, multi-
+client fanout.
+
+### Added
+
+**`udit log tail` — live SSE stream of Unity console.**
+
+```bash
+udit log tail                              # live, all levels, user-filtered stack
+udit log tail --type error,warning         # restrict log levels
+udit log tail --since 5m                   # backfill last 5min then go live
+udit log tail --filter "NullReference"     # client-side regex
+udit log tail --json | jq '.level'         # NDJSON for pipelines
+```
+
+- `--type CSV` — `error,warning,log,assert,exception` (default: all).
+- `--stacktrace MODE` — `none | user | full` (default: `user`).
+- `--since DURATION` — `5m`, `30s`, `1h30m`. Live-only when omitted.
+- `--filter REGEX` — client-side body regex; drops non-matching events.
+- `--json` — NDJSON on stdout (OR with global `--json`).
+- `--verbose` — connection notices on stderr.
+- `--no-color` — disable ANSI even on a TTY.
+
+**`udit log list` — alias for `udit console`** (snapshot). Same tool,
+same flags; kept for vocabulary consistency with `log tail`. The
+original `udit console` continues to work unchanged as a permanent
+synonym.
+
+### Implementation
+
+- `udit-connector/Editor/LogStream.cs` (new, ~500 lines):
+  * `[InitializeOnLoad]` static class; subscribes to
+    `Application.logMessageReceived` (main thread only — no threaded
+    variant; simpler + race-free).
+  * `ConcurrentQueue<BufferedEvent>` ring buffer, 2000 entries,
+    drop-oldest with dropped-counter; synthetic `dropped: N` marker on
+    next drain so clients know history was lost.
+  * `ConcurrentDictionary<Guid, ClientContext>`; drain on
+    `EditorApplication.update` with per-client per-tick cap of 500
+    events (guard against log-storm freezing Editor).
+  * 4-case `--since` handling: live-only / full window / partial +
+    `truncated` marker / empty buffer; parse via `since_ms` query.
+  * Query-string filter parsing (`types=`, `stacktrace=`, `since_ms=`)
+    with HTTP 400 + UCI-006 InvalidStreamFilter on bad values.
+  * 30s keep-alive comment frames (`: ping`) survive proxy idle
+    timeouts.
+  * Stack-trace file/line extractor handles both Editor
+    `(at path:N)` and IL2CPP/Mono ` in path:N ` formats.
+  * `[ThreadStatic]` re-entrance guard + "never Debug.Log from inside
+    the handler" discipline against recursive logging.
+- `udit-connector/Editor/Core/LogEvent.cs` (new): serializable struct
+  (t, type, message, stack, file, line) with per-field 16KB cap +
+  `…[truncated]` suffix.
+- `udit-connector/Editor/HttpServer.cs`:
+  * SSE branch in `HandleRequest` — **after** the Origin check
+    (security: blocks `EventSource()` from a malicious local web
+    page siphoning Unity logs).
+  * `StopListener` calls `LogStream.OnBeforeReload()` **first**, then
+    tears down the listener — deterministic teardown ordering so
+    clients get a clean `event: reload` marker, not a raw TCP reset.
+    Doesn't rely on `AssemblyReloadEvents` delegate invocation order.
+- `internal/client/stream.go` (new): `StreamLogs(ctx, inst, filter,
+  connectTimeout)` opens SSE; `Transport.ResponseHeaderTimeout` bounds
+  the handshake, body reads are ctx-bound. `DisableKeepAlives` on
+  the Transport — each reconnect is a fresh socket. `ParseSSEStream`
+  runs the scanner loop (128KB max frame; keep-alive skip; multi-line
+  `data:` join). Two sentinel errors: `ErrStreamInterrupted` (UCI-004),
+  `ErrConnectorTooOld` (UCI-007).
+- `cmd/log.go` (new): CLI dispatch for `log tail` / `log list`;
+  exponential reconnect with explicit success rule (≥5s open + 1
+  frame OR reload marker → reset to 1s); signal-cancelled context;
+  color-coded formatter via `golang.org/x/term.IsTerminal`; NDJSON
+  mode.
+- `cmd/root.go`: `case "log":` dispatch; overview + topic help.
+- `cmd/output.go`: `classifyGoError` maps new error codes UCI-004 /
+  UCI-006 / UCI-007.
+
+### Error codes
+
+- **UCI-004 StreamInterrupted** — live connection dropped (EOF,
+  reload marker, `net.OpError`). Retryable; `udit log tail` handles
+  internally with 1s→2s→4s backoff.
+- **UCI-006 InvalidStreamFilter** — HTTP 400 from connector for
+  unknown `type`/`stacktrace`/`since_ms` value. Non-retryable.
+- **UCI-007 ConnectorTooOld** — response `Content-Type` was not
+  `text/event-stream`. Connector < 0.8.0 doesn't speak SSE.
+  Short-circuits the reconnect loop.
+
+### Dependencies (Go)
+
+- `+ golang.org/x/term v0.42.0` (direct) — TTY detection for color gating.
+- `golang.org/x/sys` upgraded to v0.43.0 (transitive).
+
+### Upgrade notes
+
+`udit log tail` requires **Connector ≥ 0.8.0**. Older connectors return
+HTTP 400 for `GET /logs/stream`; the CLI detects this and surfaces
+UCI-007 with guidance. Install the new version via the Unity Package
+Manager (or git URL if you're tracking `main`).
+
 ## [0.6.4] - 2026-04-15
 
 Brings `udit watch` in line with the v0.6.3 `udit init` change: config

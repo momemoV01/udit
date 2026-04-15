@@ -11,6 +11,9 @@
 | `UCI-001` | NoUnityRunning | CLI | ❌ 사용자가 Unity 실행 필요 | instance 파일 없음, 죽은 PID, 잘못된 포트 |
 | `UCI-002` | ConnectionRefused | CLI | ⏳ 1-3초 후 | Connector HTTP 서버가 아직 안 떠있음 |
 | `UCI-003` | CommandTimeout | CLI | ⏳ 시간 두고 | `--timeout` 초과; Unity busy 또는 hang |
+| `UCI-004` | StreamInterrupted | CLI | ⏳ 지수 백오프 재접속 | `log tail` SSE 연결 중단 (EOF, 리로드, net.OpError) |
+| `UCI-006` | InvalidStreamFilter | CLI/Connector | ❌ flag 값 수정 | `log tail` 의 `type`/`stacktrace`/`since_ms` 값이 알 수 없음 |
+| `UCI-007` | ConnectorTooOld | CLI | ❌ Connector 업그레이드 | 응답 Content-Type이 `text/event-stream` 아님; Connector < 0.8.0 |
 | `UCI-010` | UnknownCommand | Connector | ❌ 명령 이름 수정 | 오타 또는 `[UditTool]` 등록 누락 |
 | `UCI-011` | InvalidParams | Connector | ❌ 파라미터 수정 | 필수 누락, 범위 초과, 잘못된 형식 |
 | `UCI-020` | UnityCompiling | Connector | ⏳ 2-3초 후 | 스크립트 재컴파일 진행 중 |
@@ -59,6 +62,27 @@
 **발생 시점**: `httpClient.Timeout` 초과 (기본 120000ms; `--timeout` 으로 오버라이드 가능).
 
 **에이전트 행동**: 시간이 더 걸리는 명령 (예: 거대 프로젝트의 `editor refresh --compile`, `test --mode PlayMode`)은 더 큰 `--timeout` 으로 재시도. 빠른 명령은 Unity hang 신호로 처리 — `udit status` 로 확인.
+
+### `UCI-004` — StreamInterrupted
+
+**출처**: Go CLI (`cmd/output.go > classifyGoError`; `udit log tail` 이 방출)
+**발생 시점**: `/logs/stream` 에 대한 live SSE 연결이 끊김 — body reader EOF, `net.OpError`, 또는 Connector가 도메인 리로드 직전 내보내는 `event: reload` 마커 수신.
+
+**에이전트 행동**: 재시도 가능. `udit log tail` 은 지수 백오프 (1s → 2s → 4s cap)로 내부 재접속. `--json` 모드에선 `{"kind":"reconnect","in_ms":…,"reason":…}` 가 `{"kind":"log",…}` 이벤트 스트림 사이에 등장.
+
+### `UCI-006` — InvalidStreamFilter
+
+**출처**: Connector (`LogStream.TryParseFilter`) 가 HTTP 400 반환; CLI 쪽 `--since` 파싱 실패도 포함.
+**발생 시점**: `udit log tail` 에 알 수 없는 `--type` (허용: `error,warning,log,assert,exception`), `--stacktrace` 모드 (허용: `none,user,full`), 또는 잘못된 `--since` duration 형식.
+
+**에이전트 행동**: flag 값 수정. 재시도 없이.
+
+### `UCI-007` — ConnectorTooOld
+
+**출처**: Go CLI (`internal/client/stream.go > StreamLogs`).
+**발생 시점**: `GET /logs/stream` 이 HTTP 200을 반환하지만 `Content-Type` 이 `text/event-stream` 이 아님. Connector가 SSE endpoint 이전 버전 (< 0.8.0)이라 GET을 알 수 없는 경로로 처리.
+
+**에이전트 행동**: Unity 프로젝트의 Connector를 ≥ 0.8.0 으로 업그레이드. 재시도 불가.
 
 ### `UCI-010` — UnknownCommand
 

@@ -11,6 +11,9 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 | `UCI-001` | NoUnityRunning | CLI | ❌ User must launch Unity | No instance file, dead PID, wrong port |
 | `UCI-002` | ConnectionRefused | CLI | ⏳ After 1-3s | Connector HTTP server not yet up |
 | `UCI-003` | CommandTimeout | CLI | ⏳ After delay | `--timeout` exceeded; Unity busy or hung |
+| `UCI-004` | StreamInterrupted | CLI | ⏳ Reconnect with backoff | Live SSE connection dropped (EOF, reload, net.OpError) |
+| `UCI-006` | InvalidStreamFilter | CLI/Connector | ❌ Fix flag value | `log tail` query param has unknown `type`/`stacktrace`/`since_ms` value |
+| `UCI-007` | ConnectorTooOld | CLI | ❌ Upgrade connector | Response Content-Type was not `text/event-stream`; connector < 0.8.0 |
 | `UCI-010` | UnknownCommand | Connector | ❌ Fix command name | Typo or missing `[UditTool]` registration |
 | `UCI-011` | InvalidParams | Connector | ❌ Fix params | Required param missing, out of bounds, wrong shape |
 | `UCI-020` | UnityCompiling | Connector | ⏳ After 2-3s | Script recompilation in progress |
@@ -59,6 +62,27 @@ Stable identifiers in `--json` responses. Agents should branch on these instead 
 **Triggers when**: `httpClient.Timeout` exceeds (default 120000ms; overridable via `--timeout`).
 
 **Agent action**: For commands that take longer (e.g. `editor refresh --compile` on huge projects, `test --mode PlayMode`), retry with a higher `--timeout`. For quick commands, treat as a sign Unity is hung — `udit status` to check.
+
+### `UCI-004` — StreamInterrupted
+
+**Origin**: Go CLI (`cmd/output.go > classifyGoError`; emitted by `udit log tail`)
+**Triggers when**: A live Server-Sent Events connection to `/logs/stream` drops — EOF on the body reader, a `net.OpError`, or receipt of the synthetic `event: reload` marker the Connector emits before a domain reload.
+
+**Agent action**: Retryable. `udit log tail` handles this internally with exponential backoff (1s → 2s → 4s cap). Agents that run `log tail --json` and parse NDJSON will see `{"kind":"reconnect","in_ms":…,"reason":…}` between streams of `{"kind":"log",…}` events.
+
+### `UCI-006` — InvalidStreamFilter
+
+**Origin**: Connector (`LogStream.TryParseFilter`) returning HTTP 400; also Go CLI for malformed `--since`.
+**Triggers when**: `udit log tail` is invoked with an unknown `--type` value (accepted: `error,warning,log,assert,exception`), `--stacktrace` mode (accepted: `none,user,full`), or malformed `--since` duration.
+
+**Agent action**: Fix the flag value. Do not retry verbatim.
+
+### `UCI-007` — ConnectorTooOld
+
+**Origin**: Go CLI (`internal/client/stream.go > StreamLogs`).
+**Triggers when**: `GET /logs/stream` returned HTTP 200 but the `Content-Type` header is not `text/event-stream`. The Connector predates the SSE endpoint (< 0.8.0) and is interpreting the GET as an unknown-path POST.
+
+**Agent action**: Upgrade the Connector to ≥ 0.8.0 in the Unity project. Non-retryable.
 
 ### `UCI-010` — UnknownCommand
 

@@ -747,6 +747,48 @@ The `--watch` variant ships two sample hooks (`compile_cs` and
 `reserialize_yaml`) that work as-is — just edit the `paths:` list to
 scope them.
 
+### Log tail -f (v0.7.0+)
+
+`udit log tail` is a long-lived stream of Unity console messages — the
+live counterpart to `udit console`'s snapshot. Uses Server-Sent Events
+from the Connector, reconnects automatically across domain reloads.
+
+```bash
+# Default: live stream, all levels, user-filtered stack traces, color TTY
+udit log tail
+
+# Restrict levels + backfill the last 5 minutes before going live
+udit log tail --type error,warning --since 5m
+
+# Client-side regex filter
+udit log tail --filter "NullReference"
+
+# NDJSON on stdout for agents / pipelines
+udit log tail --json | jq '.level == "error"'
+
+# Multiple clients — tail in two terminals at once, both see every log
+```
+
+Flags:
+
+| Flag | Meaning |
+|---|---|
+| `--type CSV` | `error,warning,log,assert,exception` (default: all) |
+| `--stacktrace MODE` | `none` / `user` / `full` (default: `user`) |
+| `--since DURATION` | Backfill last N (`5m`, `30s`, `1h30m`). Live-only when omitted |
+| `--filter REGEX` | Client-side regex; drop messages not matching |
+| `--json` | NDJSON on stdout (or use the global `--json`) |
+| `--verbose` | Extra connection notices on stderr |
+| `--no-color` | Disable ANSI even when stdout is a TTY |
+
+`udit log list` is a synonym of `udit console` (historical snapshot) kept
+for vocabulary consistency with `log tail`. The original `udit console`
+continues to work unchanged.
+
+Error codes specific to streaming: `UCI-004 StreamInterrupted` (retryable),
+`UCI-006 InvalidStreamFilter` (fix flag), `UCI-007 ConnectorTooOld`
+(Connector < 0.8.0). See `docs/ERROR_CODES.md`.
+
 ### Watch (v0.6.0+ — v0.6.4 config resolution)
 
 `udit watch` is a long-running file-system watcher that runs pre-defined

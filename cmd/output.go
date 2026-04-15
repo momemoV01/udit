@@ -67,8 +67,18 @@ func classifyGoError(err error) string {
 		return "UCI-002"
 	case strings.Contains(msg, "Client.Timeout exceeded"),
 		strings.Contains(msg, "timed out waiting"),
-		strings.Contains(msg, "context deadline exceeded"):
+		strings.Contains(msg, "context deadline exceeded"),
+		strings.Contains(msg, "connect timeout"):
 		return "UCI-003"
+	case strings.Contains(msg, "stream interrupted"),
+		strings.Contains(msg, "SSE EOF"):
+		return "UCI-004"
+	case strings.Contains(msg, "Unknown type value"),
+		strings.Contains(msg, "Unknown stacktrace value"),
+		strings.Contains(msg, "Invalid since_ms"):
+		return "UCI-006"
+	case strings.Contains(msg, "connector too old"):
+		return "UCI-007"
 	}
 	return ""
 }
