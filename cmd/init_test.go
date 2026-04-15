@@ -1,16 +1,64 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/momemoV01/udit/internal/client"
 	"github.com/momemoV01/udit/internal/watch"
 	"gopkg.in/yaml.v3"
 )
 
+// isolateInstances points client.DiscoverInstance at an empty heartbeat
+// directory so tests don't accidentally connect to a real running Unity.
+// Returns the fake HOME so callers can also drop in instance fixtures
+// for "instance reachable" scenarios.
+func isolateInstances(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	// Also reset the global flags root.go parses so stale state from
+	// earlier tests doesn't bleed into DiscoverInstance.
+	prevPort, prevProject := flagPort, flagProject
+	flagPort, flagProject = 0, ""
+	t.Cleanup(func() { flagPort, flagProject = prevPort, prevProject })
+	return home
+}
+
+// writeHeartbeat drops a single instance file so DiscoverInstance sees
+// a live Unity. PID is the test process — guaranteed to be alive
+// during the test, so isProcessDead returns false.
+func writeHeartbeat(t *testing.T, home, projectPath string, port int) {
+	t.Helper()
+	dir := filepath.Join(home, ".udit", "instances")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir instances: %v", err)
+	}
+	inst := client.Instance{
+		State:       "ready",
+		ProjectPath: projectPath,
+		Port:        port,
+		PID:         os.Getpid(),
+		Timestamp:   time.Now().Unix(),
+	}
+	data, err := json.Marshal(inst)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	file := filepath.Join(dir, fmt.Sprintf("%d.json", port))
+	if err := os.WriteFile(file, data, 0o644); err != nil {
+		t.Fatalf("write heartbeat: %v", err)
+	}
+}
+
 func TestInit_CreatesMinimalFile(t *testing.T) {
+	isolateInstances(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, ".udit.yaml")
 	if err := initCmd([]string{"--output", target}); err != nil {
@@ -41,6 +89,7 @@ func TestInit_CreatesMinimalFile(t *testing.T) {
 }
 
 func TestInit_WithWatch_EmbedsHooks(t *testing.T) {
+	isolateInstances(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, ".udit.yaml")
 	if err := initCmd([]string{"--output", target, "--watch"}); err != nil {
@@ -93,6 +142,7 @@ func TestInit_WithWatch_EmbedsHooks(t *testing.T) {
 }
 
 func TestInit_RefusesOverwrite(t *testing.T) {
+	isolateInstances(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, ".udit.yaml")
 	if err := os.WriteFile(target, []byte("existing: true\n"), 0o644); err != nil {
@@ -113,6 +163,7 @@ func TestInit_RefusesOverwrite(t *testing.T) {
 }
 
 func TestInit_ForceOverwrites(t *testing.T) {
+	isolateInstances(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, ".udit.yaml")
 	if err := os.WriteFile(target, []byte("old: true\n"), 0o644); err != nil {
@@ -131,7 +182,9 @@ func TestInit_ForceOverwrites(t *testing.T) {
 }
 
 func TestInit_DefaultOutputFallsBackToCwd(t *testing.T) {
-	// No Assets/ or ProjectSettings/ → detection fails → cwd fallback.
+	// No Unity instance, no Assets/ or ProjectSettings/ → detection
+	// fails at every layer → cwd fallback.
+	isolateInstances(t)
 	dir := t.TempDir()
 	prev, _ := os.Getwd()
 	defer func() { _ = os.Chdir(prev) }()
@@ -148,6 +201,9 @@ func TestInit_DefaultOutputFallsBackToCwd(t *testing.T) {
 }
 
 func TestInit_DefaultOutputDetectsUnityRoot(t *testing.T) {
+	// No instance connected + Unity project layout in cwd →
+	// filesystem walk-up is the layer that wins.
+	isolateInstances(t)
 	// Simulate a Unity project: <root>/Assets + <root>/ProjectSettings.
 	// Run from a nested subdir so detection must walk up.
 	root := t.TempDir()
@@ -177,8 +233,75 @@ func TestInit_DefaultOutputDetectsUnityRoot(t *testing.T) {
 	}
 }
 
+func TestResolveInitTarget_UsesConnectedUnityInstance(t *testing.T) {
+	// A live heartbeat at port 8591 pointing at /fake/project — init
+	// should target that project root regardless of cwd.
+	home := isolateInstances(t)
+	unityRoot := filepath.Join(t.TempDir(), "MyGame")
+	if err := os.MkdirAll(unityRoot, 0o755); err != nil {
+		t.Fatalf("mkdir unity root: %v", err)
+	}
+	// Use forward-slash form (matches what the connector writes).
+	writeHeartbeat(t, home, filepath.ToSlash(unityRoot), 8591)
+
+	// cwd is unrelated — the instance layer should override.
+	prev, _ := os.Getwd()
+	defer func() { _ = os.Chdir(prev) }()
+	unrelated := t.TempDir()
+	if err := os.Chdir(unrelated); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	abs, source, err := resolveInitTarget("")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	wantAbs, _ := filepath.Abs(filepath.Join(unityRoot, ".udit.yaml"))
+	if abs != wantAbs {
+		t.Errorf("abs = %q, want %q", abs, wantAbs)
+	}
+	if !strings.Contains(source, "8591") {
+		t.Errorf("source should mention port 8591: %q", source)
+	}
+}
+
+func TestResolveInitTarget_PortOverrideDoesNotUseStubPath(t *testing.T) {
+	// --port sets DiscoverInstance to return ProjectPath="override" (no
+	// heartbeat read). That stub must NOT become the scaffold target —
+	// the resolver has to fall through to filesystem detection.
+	isolateInstances(t)
+	flagPort = 9999 // force the override branch
+	defer func() { flagPort = 0 }()
+
+	// Unity project layout in cwd so filesystem detection succeeds.
+	root := t.TempDir()
+	for _, d := range []string{"Assets", "ProjectSettings"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	prev, _ := os.Getwd()
+	defer func() { _ = os.Chdir(prev) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	abs, source, err := resolveInitTarget("")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	wantAbs := filepath.Join(root, ".udit.yaml")
+	if abs != wantAbs {
+		t.Errorf("abs = %q, want %q (port stub should not leak)", abs, wantAbs)
+	}
+	if !strings.Contains(source, "filesystem") {
+		t.Errorf("source should be filesystem fallback: %q", source)
+	}
+}
+
 func TestResolveInitTarget_ExplicitOutputWins(t *testing.T) {
 	// Even inside a detected Unity project, explicit --output must override.
+	isolateInstances(t)
 	root := t.TempDir()
 	for _, d := range []string{"Assets", "ProjectSettings"} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {

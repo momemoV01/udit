@@ -4,6 +4,52 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-04-15
+
+Extends `udit init`'s target resolution with a new first-choice layer:
+**the Unity instance `udit status` is already connected to**. Running
+from an unrelated shell — another project's directory, a detached VS
+Code terminal, System32 — now lands the config at the project you're
+actually working on, the same way `scene`, `go`, `component` target the
+connected editor. Reported from real use: "can't `init` pick the
+project `status` reports?"
+
+### Changed
+
+`udit init` (no `--output`) resolution is now a 4-layer chain:
+
+1. Connected Unity instance — honors global `--port` / `--project`.
+   `udit --project MyGame init` picks a specific editor when several
+   are open. Same discovery path as every other udit command.
+2. Filesystem walk-up (Assets/ + ProjectSettings/). v0.6.2 behavior,
+   now the fallback instead of the primary.
+3. cwd fallback.
+4. `--output PATH` overrides all three (unchanged).
+
+The success message shows the layer that won:
+- `Wrote C:\Projects\MyGame\.udit.yaml (connected Unity at port 8590)`
+- `Wrote C:\dev\MyGame\.udit.yaml (Unity project root detected (filesystem))`
+- `Wrote C:\somewhere\.udit.yaml (no Unity connection / project detected — using cwd)`
+
+### Edge case
+
+`--port N` makes `DiscoverInstance` return `ProjectPath="override"`
+(it skips the heartbeat read when a port is forced). The init
+resolver explicitly filters that sentinel and falls through to the
+filesystem layer — `udit --port 8590 init` lands at the real project
+on disk, not a literal "override" directory.
+
+### Tests
+
+- `TestResolveInitTarget_UsesConnectedUnityInstance` — writes a fake
+  heartbeat with the test process's PID, verifies init targets the
+  project path from it regardless of cwd.
+- `TestResolveInitTarget_PortOverrideDoesNotUseStubPath` — ensures
+  the "override" sentinel doesn't leak into the target.
+- Existing tests now use `isolateInstances(t)` helper so they don't
+  accidentally connect to whatever Unity happens to be running on the
+  developer's machine.
+
 ## [0.6.2] - 2026-04-15
 
 Fixes the `udit init` default target so it lands at the **Unity project

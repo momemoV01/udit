@@ -723,15 +723,22 @@ udit list
 
 ### Project scaffold (v0.6.1+)
 
-`udit init` drops a `.udit.yaml` scaffold at your **Unity project root**
-(autodetected by walking up from cwd for a directory with both `Assets/`
-and `ProjectSettings/`). Falls back to cwd when no Unity project is
-found. `--output` overrides both.
+`udit init` drops a `.udit.yaml` scaffold at your **Unity project root**.
+Resolution order (first match wins):
+
+1. `--output PATH` — explicit override.
+2. **Connected Unity instance** — the same project `udit status` shows.
+   Honors the global `--port` / `--project` flags when you have
+   multiple editors open.
+3. Filesystem walk-up — directory containing both `Assets/` and
+   `ProjectSettings/`.
+4. Fall back to cwd.
 
 ```bash
-# From anywhere inside the Unity project
+# From anywhere — Unity tells init where to land
 udit init                     # minimal scaffold at detected project root
 udit init --watch             # + a ready-to-run watch: section
+udit --project MyGame init    # pick one of several running editors
 udit init --output ./my.yaml  # explicit path (skips autodetect)
 udit init --force --watch     # overwrite an existing config
 ```

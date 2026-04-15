@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/momemoV01/udit/internal/client"
 )
 
 // initCmd writes a `.udit.yaml` scaffold. When --output is omitted, the
@@ -68,11 +70,18 @@ func initCmd(subArgs []string) error {
 	return nil
 }
 
-// resolveInitTarget picks the scaffold destination. Explicit --output wins;
-// otherwise walks up from cwd looking for a Unity project root and
-// falls back to cwd. Returns the absolute target path plus a human
-// phrase describing how it was chosen (printed back to the user so they
-// don't guess where the file landed).
+// resolveInitTarget picks the scaffold destination. Layered strategy so
+// the tool lands in the right place regardless of where the shell lives:
+//
+//  1. --output wins. Explicit is explicit.
+//  2. If a Unity instance is reachable via the usual DiscoverInstance
+//     (honors global --port / --project flags), use its ProjectPath.
+//     This is what `udit status` already reports — same source of truth.
+//  3. Walk up from cwd for a Unity project root (Assets/ + ProjectSettings/).
+//  4. Final fallback: cwd.
+//
+// Returns the absolute target path plus a human phrase describing how
+// it was chosen (printed back so users don't guess where the file landed).
 func resolveInitTarget(explicitOutput string) (string, string, error) {
 	if explicitOutput != "" {
 		abs, err := filepath.Abs(explicitOutput)
@@ -82,14 +91,32 @@ func resolveInitTarget(explicitOutput string) (string, string, error) {
 		return abs, "from --output", nil
 	}
 
+	// Connected Unity instance — what `udit status` shows. Uses the
+	// global --port / --project flags already parsed by root.go, so
+	// `udit --project MyGame init` targets the right instance when
+	// several Unity editors are open.
+	//
+	// Note: DiscoverInstance returns ProjectPath="override" when the
+	// caller passed --port (no heartbeat read). Skip that case and fall
+	// through to filesystem detection — the user still wanted the real
+	// project, they just overrode the port for RPC.
+	if inst, err := client.DiscoverInstance(flagProject, flagPort); err == nil &&
+		inst.ProjectPath != "" && inst.ProjectPath != "override" {
+		abs, aerr := filepath.Abs(filepath.FromSlash(inst.ProjectPath))
+		if aerr == nil {
+			source := fmt.Sprintf("connected Unity at port %d", inst.Port)
+			return filepath.Join(abs, ".udit.yaml"), source, nil
+		}
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", "", fmt.Errorf("resolve cwd: %w", err)
 	}
 	if root, rerr := detectProjectRoot(cwd); rerr == nil {
-		return filepath.Join(root, ".udit.yaml"), "Unity project root detected", nil
+		return filepath.Join(root, ".udit.yaml"), "Unity project root detected (filesystem)", nil
 	}
-	return filepath.Join(cwd, ".udit.yaml"), "no Unity project detected — using cwd", nil
+	return filepath.Join(cwd, ".udit.yaml"), "no Unity connection / project detected — using cwd", nil
 }
 
 // scaffoldTemplate composes the yaml scaffold. Always includes commented-
@@ -161,10 +188,12 @@ func initHelp() string {
 	return `Usage: udit init [options]
 
 Scaffold a ` + "`.udit.yaml`" + `. Default target resolution:
-  1. walk up from cwd looking for a Unity project root
+  1. connected Unity instance (same source as ` + "`udit status`" + `;
+     honors global --port / --project flags)
+  2. walk up from cwd for a Unity project root
      (a directory containing BOTH Assets/ and ProjectSettings/)
-  2. fall back to cwd if no Unity project is found
-  3. --output overrides both
+  3. cwd fallback
+  --output overrides all three.
 
 Options:
   --output PATH    Target path (skips autodetect)
@@ -173,8 +202,9 @@ Options:
   --force          Overwrite an existing file
 
 Examples:
-  udit init                      # from anywhere inside a Unity project
+  udit init                      # anywhere — lands at the connected Unity project
   udit init --watch              # + concrete watch hooks
+  udit --project MyGame init     # pick instance by substring (multi-editor)
   udit init --output ./my.yaml
   udit init --force --watch      # rewrite existing config
 `

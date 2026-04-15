@@ -723,12 +723,18 @@ udit list
 
 ### 프로젝트 스캐폴드 (v0.6.1+)
 
-`udit init`은 **Unity 프로젝트 루트**에 `.udit.yaml` 스캐폴드를 떨어뜨립니다 (cwd에서 walk-up으로 `Assets/` + `ProjectSettings/` 둘 다 있는 디렉토리를 자동 탐지). Unity 프로젝트가 아닌 곳에서는 cwd로 fallback. `--output`은 둘 다 건너뛰고 명시 경로.
+`udit init`은 **Unity 프로젝트 루트**에 `.udit.yaml` 스캐폴드를 떨어뜨립니다. 경로 결정 순서 (먼저 맞는 것 사용):
+
+1. `--output PATH` — 명시 override.
+2. **연결된 Unity 인스턴스** — `udit status`가 보여주는 그 프로젝트. 여러 에디터가 떠있을 땐 `--port` / `--project` 전역 플래그로 선택.
+3. 파일시스템 walk-up — `Assets/` + `ProjectSettings/` 둘 다 있는 디렉토리.
+4. cwd fallback.
 
 ```bash
-# Unity 프로젝트 안 아무 디렉토리에서
+# 아무 디렉토리에서 — Unity가 init에게 어디에 만들지 알려줌
 udit init                     # 탐지된 프로젝트 루트에 최소 스캐폴드
 udit init --watch             # + 바로 쓰는 watch 섹션
+udit --project MyGame init    # 여러 에디터 중 하나 선택
 udit init --output ./my.yaml  # 명시 경로 (자동 탐지 건너뜀)
 udit init --force --watch     # 기존 파일 덮어쓰기
 ```
