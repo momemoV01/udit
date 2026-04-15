@@ -41,7 +41,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           go build -ldflags="-s -w -X main.Version=${VERSION}" -o "udit-${GOOS}-${GOARCH}${EXT}" .
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: udit-${{ matrix.goos }}-${{ matrix.goarch }}
           path: udit-*
