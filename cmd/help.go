@@ -875,6 +875,10 @@ Options:
                         user: with stack trace, internal frames filtered (default)
                         full: raw message including all frames
   --clear              Clear console
+  --json               Wrap response in the global JSON envelope
+                        (success → stdout, error → stderr, includes
+                        "data" with the entries array). Same flag as
+                        the global ` + "`udit --json`" + `; either spelling works.
 
 Examples:
   udit console
@@ -882,6 +886,7 @@ Examples:
   udit console --stacktrace user
   udit console --type error --stacktrace full
   udit console --clear
+  udit console --json --lines 50
 `)
 	case "exec":
 		fmt.Print(`Usage: udit exec "<code>" [options]
@@ -895,6 +900,10 @@ Options:
   --usings <ns1,ns2>   Add extra using directives
   --csc <path>         Path to csc compiler (csc.dll or csc.exe). Auto-detected if omitted.
   --dotnet <path>      Path to dotnet runtime. Auto-detected if omitted.
+  --json               Wrap the response in the global JSON envelope.
+                        Whatever your code returns lands in "data";
+                        compile errors come back as UCI-030 / runtime
+                        errors as UCI-031.
 
 Default usings: System, System.Collections.Generic, System.IO, System.Linq,
   System.Reflection, System.Threading.Tasks, UnityEngine,
