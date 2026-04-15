@@ -134,3 +134,45 @@ func reportError(err error, command string, inst *client.Instance, useJSON bool)
 		emitTextError(err.Error())
 	}
 }
+
+// printResponse renders a CommandResponse to stdout/stderr.
+//
+//	useJSON=true: uniform jsonOutput envelope (see emitJSONResponse above)
+//	useJSON=false: legacy text — pretty-printed data on success, "Error: ..."
+//	               on failure (preserves newlines for tree-style output)
+func printResponse(resp *client.CommandResponse, command string, inst *client.Instance, useJSON bool) {
+	if useJSON {
+		emitJSONResponse(resp, command, inst)
+		return
+	}
+
+	if !resp.Success {
+		msg := resp.Message
+		if msg == "" {
+			msg = "unknown error"
+		}
+		if len(resp.Data) > 0 && string(resp.Data) != "null" {
+			fmt.Fprintf(os.Stderr, "Error: %s\nDetails: %s\n", msg, string(resp.Data))
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+		}
+		return
+	}
+
+	if len(resp.Data) > 0 && string(resp.Data) != "null" {
+		var pretty interface{}
+		if json.Unmarshal(resp.Data, &pretty) == nil {
+			// If data is a plain string, print it raw (preserves newlines for tree output etc.)
+			if s, ok := pretty.(string); ok {
+				fmt.Println(s)
+			} else {
+				b, _ := json.MarshalIndent(pretty, "", "  ")
+				fmt.Println(string(b))
+			}
+		} else {
+			fmt.Println(string(resp.Data))
+		}
+	} else if resp.Message != "" {
+		fmt.Println(resp.Message)
+	}
+}
