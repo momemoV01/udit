@@ -134,6 +134,90 @@ func TestMergeExecUsings_AppendsConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ParsesWatchSection(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	configPath := filepath.Join(dir, ".udit.yaml")
+	if err := os.WriteFile(configPath, []byte(`watch:
+  debounce: 500ms
+  on_busy: ignore
+  buffer_size: 1048576
+  max_parallel: 8
+  case_insensitive: false
+  ignore:
+    - "**/*.generated.cs"
+    - CustomDir/
+  hooks:
+    - name: compile
+      paths:
+        - Assets/**/*.cs
+      run: refresh --compile
+    - name: reserialize
+      paths:
+        - Assets/**/*.prefab
+      run: reserialize $RELFILE
+      debounce: 1s
+      on_busy: queue
+      run_on_start: true
+`), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, _ := LoadConfig(dir)
+	if cfg == nil {
+		t.Fatalf("expected cfg")
+	}
+	w := cfg.Watch
+	if w.Debounce.Milliseconds() != 500 {
+		t.Errorf("Debounce: got %v, want 500ms", w.Debounce)
+	}
+	if w.OnBusy != "ignore" {
+		t.Errorf("OnBusy: got %q, want ignore", w.OnBusy)
+	}
+	if w.BufferSize != 1048576 {
+		t.Errorf("BufferSize: got %d, want 1048576", w.BufferSize)
+	}
+	if w.MaxParallel != 8 {
+		t.Errorf("MaxParallel: got %d, want 8", w.MaxParallel)
+	}
+	if w.CaseInsensitive == nil || *w.CaseInsensitive != false {
+		t.Errorf("CaseInsensitive: got %v, want false", w.CaseInsensitive)
+	}
+	if len(w.Ignore) != 2 {
+		t.Errorf("Ignore: got %v", w.Ignore)
+	}
+	if len(w.Hooks) != 2 {
+		t.Fatalf("Hooks: got %d, want 2", len(w.Hooks))
+	}
+	if w.Hooks[1].Debounce.Milliseconds() != 1000 {
+		t.Errorf("Hooks[1].Debounce: got %v, want 1s", w.Hooks[1].Debounce)
+	}
+	if !w.Hooks[1].RunOnStart {
+		t.Errorf("Hooks[1].RunOnStart: got false, want true")
+	}
+}
+
+func TestLoadConfig_EmptyWatchSectionOK(t *testing.T) {
+	// No watch: key ⇒ zero-value WatchCfg, Validate returns error on
+	// Validate() (no hooks), but LoadConfig itself must not fail.
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	configPath := filepath.Join(dir, ".udit.yaml")
+	if err := os.WriteFile(configPath, []byte(`default_port: 8591
+`), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cfg, _ := LoadConfig(dir)
+	if cfg == nil {
+		t.Fatalf("expected cfg")
+	}
+	if len(cfg.Watch.Hooks) != 0 {
+		t.Errorf("Hooks: got %d, want 0 (omitted section)", len(cfg.Watch.Hooks))
+	}
+}
+
 func TestMergeExecUsings_DedupesAgainstCli(t *testing.T) {
 	cfg := &Config{Exec: ExecCfg{Usings: []string{"Unity.Entities", "MyGame.Core"}}}
 	in := map[string]interface{}{

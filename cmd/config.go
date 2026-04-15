@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/momemoV01/udit/internal/watch"
 	"gopkg.in/yaml.v3"
 )
 
@@ -15,9 +16,10 @@ import (
 // first file named `.udit.yaml`. Stops at the user's home directory so a
 // stray file in the home root doesn't leak across unrelated projects.
 type Config struct {
-	DefaultPort      int     `yaml:"default_port"`
-	DefaultTimeoutMs int     `yaml:"default_timeout_ms"`
-	Exec             ExecCfg `yaml:"exec"`
+	DefaultPort      int            `yaml:"default_port"`
+	DefaultTimeoutMs int            `yaml:"default_timeout_ms"`
+	Exec             ExecCfg        `yaml:"exec"`
+	Watch            watch.WatchCfg `yaml:"watch"`
 }
 
 type ExecCfg struct {
