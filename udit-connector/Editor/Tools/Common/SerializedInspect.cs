@@ -142,7 +142,7 @@ namespace UditConnector.Tools.Common
                 case SerializedPropertyType.Bounds:        return new { center = V3(p.boundsValue.center), extents = V3(p.boundsValue.extents) };
                 case SerializedPropertyType.ArraySize:     return p.intValue;
                 case SerializedPropertyType.LayerMask:     return p.intValue;
-                case SerializedPropertyType.AnimationCurve: return "<AnimationCurve>";
+                case SerializedPropertyType.AnimationCurve: return DescribeAnimationCurve(p.animationCurveValue);
                 case SerializedPropertyType.Gradient:       return "<Gradient>";
                 case SerializedPropertyType.Character:     return p.intValue;
                 case SerializedPropertyType.Vector2Int:    return new { x = p.vector2IntValue.x, y = p.vector2IntValue.y };
@@ -226,6 +226,37 @@ namespace UditConnector.Tools.Common
                 name = o.name,
                 path = string.IsNullOrEmpty(path) ? null : path,
                 guid = string.IsNullOrEmpty(path) ? null : AssetDatabase.AssetPathToGUID(path),
+            };
+        }
+
+        /// <summary>
+        /// Renders an AnimationCurve in the same JSON shape `component set
+        /// &lt;field&gt; curve &lt;value&gt;` accepts, so `get | set` round-trips.
+        /// Also used as the `from` field when `component set --dry-run`
+        /// reports what the current curve is. Exposed at assembly scope
+        /// (internal) so ManageComponent can reuse it.
+        /// </summary>
+        internal static object DescribeAnimationCurve(AnimationCurve curve)
+        {
+            if (curve == null) return null;
+            var keys = curve.keys ?? new Keyframe[0];
+            var keyObjs = new object[keys.Length];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                var k = keys[i];
+                keyObjs[i] = new
+                {
+                    t = k.time,
+                    v = k.value,
+                    inT = k.inTangent,
+                    outT = k.outTangent,
+                };
+            }
+            return new
+            {
+                keys = keyObjs,
+                preWrap = curve.preWrapMode.ToString(),
+                postWrap = curve.postWrapMode.ToString(),
             };
         }
 

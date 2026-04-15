@@ -2,7 +2,9 @@
     "name": "UditConnector.Editor.Tests",
     "rootNamespace": "UditConnector.Tests",
     "references": [
-        "UditConnector.Editor"
+        "UditConnector.Editor",
+        "UnityEditor.TestRunner",
+        "UnityEngine.TestRunner"
     ],
     "includePlatforms": [
         "Editor"
@@ -15,9 +17,6 @@
     ],
     "autoReferenced": false,
     "defineConstraints": [],
-    "optionalUnityReferences": [
-        "TestAssemblies"
-    ],
     "versionDefines": [],
     "noEngineReferences": false
 }

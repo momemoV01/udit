@@ -21,7 +21,6 @@ namespace UditConnector.Tools
         // variant resolution context — likely never set this way from CLI).
         static readonly System.Collections.Generic.HashSet<SerializedPropertyType> s_UnsupportedSet = new()
         {
-            SerializedPropertyType.AnimationCurve,
             SerializedPropertyType.Gradient,
             SerializedPropertyType.ManagedReference,
             SerializedPropertyType.ExposedReference,
@@ -890,6 +889,14 @@ namespace UditConnector.Tools
                         return true;
                     }
 
+                case SerializedPropertyType.AnimationCurve:
+                    {
+                        oldJsonValue = SerializedInspect.DescribeAnimationCurve(prop.animationCurveValue);
+                        if (!TryParseAnimationCurve(value, out _, out var perr))
+                        { error = perr; return false; }
+                        return true;
+                    }
+
                 default:
                     {
                         var unsupportedNames = string.Join(", ", s_UnsupportedSet);
@@ -963,6 +970,10 @@ namespace UditConnector.Tools
                     // validation and write.
                     if (TryResolveObjectReference(prop, value, out var obj, out _))
                         prop.objectReferenceValue = obj; // null clears the reference
+                    break;
+                case SerializedPropertyType.AnimationCurve:
+                    if (TryParseAnimationCurve(value, out var curve, out _))
+                        prop.animationCurveValue = curve;
                     break;
             }
         }
@@ -1118,6 +1129,83 @@ namespace UditConnector.Tools
                 }
             }
             enumValueIndex = 0;
+            return false;
+        }
+
+        /// <summary>
+        /// Parse the JSON value string into an AnimationCurve ready for
+        /// `prop.animationCurveValue` assignment. Shape:
+        ///   { "keys": [ { "t":..,"v":..,"inT":..,"outT":.. }, ... ],
+        ///     "preWrap": "ClampForever", "postWrap": "ClampForever" }
+        /// Defaults: inT/outT=0 (linear tangents); preWrap/postWrap =
+        /// ClampForever (Unity's runtime default).
+        /// </summary>
+        static bool TryParseAnimationCurve(string json, out AnimationCurve curve, out string error)
+        {
+            curve = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                error = "AnimationCurve: empty value. Expected JSON { \"keys\": [...] }.";
+                return false;
+            }
+            JObject obj;
+            try { obj = JObject.Parse(json); }
+            catch (System.Exception ex) { error = $"AnimationCurve: invalid JSON — {ex.Message}"; return false; }
+
+            var keysTok = obj["keys"] as JArray;
+            var keyCount = keysTok?.Count ?? 0;
+            var keys = new Keyframe[keyCount];
+            for (int i = 0; i < keyCount; i++)
+            {
+                var k = keysTok[i];
+                if (k is not JObject)
+                {
+                    error = $"AnimationCurve: keys[{i}] must be a JSON object like {{\"t\":0,\"v\":0}}.";
+                    return false;
+                }
+                float ParseFloat(string field, float defaultValue)
+                {
+                    var tok = k[field];
+                    if (tok == null) return defaultValue;
+                    try { return tok.Value<float>(); }
+                    catch { return defaultValue; }
+                }
+                keys[i] = new Keyframe(
+                    ParseFloat("t", 0f),
+                    ParseFloat("v", 0f),
+                    ParseFloat("inT", 0f),
+                    ParseFloat("outT", 0f));
+            }
+            curve = new AnimationCurve(keys);
+
+            if (obj["preWrap"] != null)
+            {
+                if (!TryParseWrapMode(obj["preWrap"].ToString(), out var pm, out error)) return false;
+                curve.preWrapMode = pm;
+            }
+            else curve.preWrapMode = WrapMode.ClampForever;
+
+            if (obj["postWrap"] != null)
+            {
+                if (!TryParseWrapMode(obj["postWrap"].ToString(), out var qm, out error)) return false;
+                curve.postWrapMode = qm;
+            }
+            else curve.postWrapMode = WrapMode.ClampForever;
+
+            return true;
+        }
+
+        static bool TryParseWrapMode(string s, out WrapMode mode, out string error)
+        {
+            mode = WrapMode.ClampForever;
+            error = null;
+            if (System.Enum.TryParse<WrapMode>(s, true, out var parsed) && System.Enum.IsDefined(typeof(WrapMode), parsed))
+            {
+                mode = parsed;
+                return true;
+            }
+            error = $"Unknown WrapMode '{s}'. Accepted: Default, Once, Loop, PingPong, ClampForever.";
             return false;
         }
 
