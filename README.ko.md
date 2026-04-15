@@ -7,6 +7,9 @@
 > Udit (उदित) — 산스크리트어로 *떠오르다*. [DevBookOfArray](https://github.com/youngwoocho02)의 [unity-cli](https://github.com/youngwoocho02/unity-cli)를 fork하여 에이전트 중심 게임 개발 워크플로에 맞게 확장했습니다.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/momemoV01/udit?sort=semver)](https://github.com/momemoV01/udit/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/momemoV01/udit)](go.mod)
+[![CI](https://github.com/momemoV01/udit/actions/workflows/ci.yml/badge.svg)](https://github.com/momemoV01/udit/actions/workflows/ci.yml)
 
 **띄울 서버도, 작성할 설정도, 관리할 프로세스도 없습니다. 그냥 명령어를 칩니다.**
 

@@ -1,0 +1,6 @@
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+#
+# Wildcard catches everything. Specific paths win over the wildcard.
+# As udit grows multiple maintainers, peel paths out into their own lines.
+
+* @momemoV01

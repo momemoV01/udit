@@ -7,6 +7,9 @@
 > Udit (उदित) — Sanskrit for *risen*. A fork of [unity-cli](https://github.com/youngwoocho02/unity-cli) by [DevBookOfArray](https://github.com/youngwoocho02), extended for agent-first game development workflows.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/momemoV01/udit?sort=semver)](https://github.com/momemoV01/udit/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/momemoV01/udit)](go.mod)
+[![CI](https://github.com/momemoV01/udit/actions/workflows/ci.yml/badge.svg)](https://github.com/momemoV01/udit/actions/workflows/ci.yml)
 
 **No server to run. No config to write. No process to manage. Just type a command.**
 
