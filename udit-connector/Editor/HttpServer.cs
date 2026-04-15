@@ -88,6 +88,13 @@ namespace UditConnector
         {
             if (s_Listener == null) return;
 
+            // Flush any SSE clients BEFORE tearing down the listener so they
+            // see a clean `event: reload` marker rather than a raw TCP reset.
+            // Ordering of multiple `beforeAssemblyReload` subscribers is
+            // registration-order-dependent and fragile — own the sequence here.
+            try { LogStream.OnBeforeReload(); }
+            catch { /* never let log teardown fail the listener teardown */ }
+
             s_Cts?.Cancel();
             s_Cts?.Dispose();
             s_Cts = null;
@@ -179,6 +186,17 @@ namespace UditConnector
                 response.ContentLength64 = buf.Length;
                 await response.OutputStream.WriteAsync(buf, 0, buf.Length);
                 response.Close();
+                return;
+            }
+
+            // SSE route lives outside the command pipeline — a long-lived
+            // handler here would starve the single-threaded command queue.
+            // LogStream.Attach takes ownership of the response (does NOT Close
+            // it) and keeps the connection open across EditorApplication.update
+            // drains. See plan humble-baking-peacock.md D1.
+            if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/logs/stream")
+            {
+                LogStream.Attach(context);
                 return;
             }
 
