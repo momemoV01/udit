@@ -4,6 +4,56 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-04-16
+
+Pre-public security hardening. No functional changes — this is a
+rebuild of the release binaries on a Go toolchain that includes the
+latest stdlib fixes, plus supporting repo hygiene.
+
+### Security
+
+- Release binaries are now built on Go 1.26 (was 1.25), which ships
+  the fixes for four reachable stdlib vulnerabilities surfaced by
+  `govulncheck`: `GO-2026-4947` / `GO-2026-4946` (crypto/x509 policy
+  validation), `GO-2026-4870` (crypto/tls TLS 1.3 KeyUpdate DoS), and
+  `GO-2026-4866` (crypto/x509 name-constraint auth bypass). All four
+  were reachable from `udit update`, `client.Send`, and
+  `client.StreamLogs` via their TLS call sites. No code changes were
+  required — the fixes live in the standard library.
+
+### Added
+
+- `## Security & Trust Model` section in README (en + ko) documenting
+  the "trusted local user" model: loopback binding, `Origin` header
+  rejection, and the fact that `exec` / `menu` / `run` tasks execute
+  with full Editor privileges. Also points at GitHub Security
+  Advisories as the reporting channel.
+- `.github/dependabot.yml` — weekly PRs for `github-actions` and
+  `gomod` ecosystems. Replaces ad-hoc SHA pinning as the sustainable
+  supply-chain answer.
+
+### Changed
+
+- `.gitignore` widened to cover `*.pem`, `*.key`, `*.p12`, `*.pfx`,
+  `*.crt`, `credentials.*`, `secrets/`, `.secrets/`, `.env.local`,
+  `.env.*.local`, `.npmrc`, and `.npmrc.local` — common
+  accidental-commit patterns that weren't previously blocked.
+- README Roadmap section now lists every shipped version through
+  v0.9.0 (was frozen at v0.6.0), marks v0.9.0 as *(current)*, and
+  splits "shipped" from "upcoming".
+
+### Repo hygiene (Sprint 3 wrap-up, pre-v0.9.1)
+
+- Sprint 3 C1 — 10k-GameObject scene benchmark on the SlimeMaster
+  project; results captured in the ROADMAP Decision Log and a new
+  `## Performance` section in the README (seven-query table, both
+  README languages).
+- Sprint 3 C2 — test coverage gap fill across five slices. Go `cmd`
+  52.9% → 57.9%, `internal/watch` 87.2% → 88.9%, Connector NUnit 19
+  → 42 tests. Added `ComponentSetPrimitiveTests` (Bool / Vector2-4 /
+  Color / Enum) and `Vector3ParsingTests` with a drift guard pinning
+  the three `TryParseVector3` copies to the same truth table.
+
 ## [0.9.0] - 2026-04-15
 
 Closes Sprint 2 B3 — the last component-set gap before Public-
