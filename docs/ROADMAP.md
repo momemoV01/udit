@@ -786,6 +786,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | Phase 3 분할 세분화 (3a/3b/3c) — v0.4.0/v0.4.1 day-1 patch | 원래 3a (v0.4.0) + 3b (prefab+asset+transactions, v0.4.x)로 계획했으나, 실제 작업 중 transactions만 cross-cutting이라 묶기 불편함을 발견. 3b에 ObjectReference set + prefab + asset mutation을 담아 v0.4.1로 cut하고, transactions는 3c로 별도 분리. Phase 2 때 v0.3.0 → v0.3.1 같은 날 릴리스 패턴 그대로 v0.4.0 → v0.4.1 |
 | 2026-04-15 | 트랜잭션은 Unity-native API 3개만으로 (`IncrementCurrentGroup` + `CollapseUndoOperations` + `RevertAllDownToGroup`) | 대안은 udit이 "begin 이후 실행된 mutation 명령 목록"을 자체 추적하고 rollback 시 역순 재실행하는 방식. 단점: (i) Stateless HTTP 원칙 위반 큼 (command history를 connector에 저장), (ii) 비가역적 API(asset create/move 등)는 역재실행 불가, (iii) Unity Undo와 별도 추적이라 Ctrl+Z와 udit의 rollback이 다르게 동작. 정반대로 Unity Undo를 신뢰하고 그 위에 얹으면 (i) state가 `{group, name, started}` 3개만, (ii) commit 후 Ctrl+Z 한 번 = udit rollback 1회 = 대칭, (iii) Unity가 지원하지 않는 건 udit도 지원 안 한다는 일관성. AssetDatabase 연산이 참여 못하는 건 이 트레이드오프의 대가로 받아들이고 docs에 명시 |
 | 2026-04-15 | 트랜잭션 state는 static 필드 (도메인 리로드 시 자동 폐기) | 명시적 cleanup hook (AssemblyReloadEvents) 없이도 리로드 시 static이 wipe되는 Unity 특성 활용. 장점: 핸들이 stale 상태로 남지 않음. 단점: 부분 mutation이 Undo 스택에 남되 tx 핸들은 사라져 "묶기 미완성" 상태가 됨 — `tx status`가 no-active 반환하면 agent가 인지 가능. 설계 대신 리로드 중단 warning을 미래에 추가할 여지 |
+| 2026-04-15 | Phase 4 분할 — 4a(project) + 4b(test) 를 v0.4.3 interim cut, 4c(build) + 4d(package) 를 v0.5.0 | Phase 2/3 day-1 patch 패턴 계승. project + test 두 슬라이스만으로도 CI에서 udit JUnit XML 소비 가능 = 체감 가치 라인. `build`는 진행도 스트리밍 + 다중 타겟 + IL2CPP 등 가장 큰 덩어리, `package`는 중간. 이 둘을 기다리느라 test/project 릴리스가 밀리는 걸 피하고, v0.5.0은 Phase 4 전체 완성으로 깨끗이 cut. v0.5.0 regression 범위도 두 슬라이스로 제한 |
+| 2026-04-15 | `--output` / `--output_path` 상대경로는 **CLI cwd** 기준 (Unity 프로젝트 루트 X) | 초판은 C# 쪽에서 상대경로를 `Application.dataPath`의 부모(프로젝트 루트) 기준으로 resolve했음. CLI 관점에서 이건 POSIX 관행 위반 — `udit <cmd> --output foo.xml`은 "지금 내 shell 위치에 foo.xml 생기겠지"로 읽힘. CI/GitHub Actions에서는 `$GITHUB_WORKSPACE` 기준을 기대하는데 실제로는 Unity 프로젝트에 떨어져 혼란. 수정: Go CLI가 `filepath.Abs`로 상대→절대 변환해 HTTP에 싣고, C# 쪽은 절대경로 그대로 사용. Direct HTTP 호출자용 project-root fallback은 남김 (Unity-internal 툴체인 호환). 헬퍼 `absolutizePath` / `absolutizePathParam` 를 `cmd/paths.go`에 두고 `test --output`(전용 핸들러)과 `screenshot --output_path`(default passthrough) 양쪽에 동일 적용. 미래에 추가될 path-like 플래그도 동일 지점에 꽂기만 하면 됨 |
 
 ---
 
@@ -819,7 +821,10 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] **v0.4.1 태그 push + Release 검증** (2026-04-15)
 - [x] Phase 3c 착수 — Transactions (`tx begin/commit/rollback/status`) (2026-04-15)
 - [x] **v0.4.2 태그 push + Release 검증** (2026-04-15)
+- [x] Phase 4a 착수 — `project info/validate/preflight` (2026-04-15)
+- [x] Phase 4b 착수 — `test list` + `test run --output junit.xml` + CLI-cwd path semantics fix (2026-04-15)
+- [x] **v0.4.3 태그 push + Release 검증** (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
-- [ ] **Phase 4 (Automate) 착수** — `build player/targets/addressables`, `package add/remove/list`, `test run --output junit.xml`, `project info/validate/preflight`
+- [ ] **Phase 4c/4d 착수** — `build player/targets/addressables` + `package add/remove/list/info/resolve` (v0.5.0)
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)

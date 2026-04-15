@@ -4,6 +4,104 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-04-15
+
+Interim patch covering the first two slices of Phase 4 (Automate) —
+`project` read-only commands and the `test` surface extensions — plus
+a path-semantics fix shared by `test run --output` and
+`screenshot --output_path`. The remaining Phase 4 blocks (`build`,
+`package`) land together in v0.5.0; splitting here keeps the JUnit-XML
+→ CI-integration path usable now instead of waiting for the full
+automate roadmap.
+
+Connector bumped to `0.6.1` — one new `[UditTool]` (`ListTests`) and
+parameter-description tweaks on existing tools; no behavior change
+in `RunTests` / `EditorScreenshot` themselves.
+
+### Added
+
+**`project` namespace (3 subcommands) — new `ManageProject` tool.**
+
+```bash
+udit project info                    # Unity version, build target, packages, asset stats
+udit project validate [--include-packages] [--limit N]
+udit project preflight [--include-packages] [--limit N]
+```
+
+- `info` — fast one-shot project snapshot: Unity version, active
+  build target, render pipeline, product/company/bundle version,
+  scripting backend + color space, scenes in Build Settings (with
+  enabled flag + index), packages (declared versions from
+  `manifest.json`), asset counts (total / cs / scenes / prefabs /
+  materials / textures). Manifest-only package read — deliberate
+  tradeoff to keep the response sub-second on large projects.
+- `validate` — scans for issues an agent should know before acting:
+  prefab assets with missing script references (via
+  `GameObjectUtility.GetMonoBehavioursWithMissingScriptCount`), Build
+  Settings with no enabled scenes. Returns `{ ok, errors, warnings,
+  scan_ms, issues[] }`. `--include-packages` widens scope to
+  `Packages/`; `--limit` caps issues per severity (default 100).
+- `preflight` — validate + pre-build hygiene: compile state
+  (`EditorApplication.isCompiling`), empty `productName`,
+  `companyName` left at `"DefaultCompany"`. Designed to front-run
+  `udit build player` once that lands.
+
+**`test list` and `test run --output`.**
+
+```bash
+udit test list [--mode EditMode|PlayMode]   # enumerate without running
+udit test run --output junit.xml            # also write JUnit XML
+```
+
+- `test list` — read-only walk of the test tree via
+  `TestRunnerApi.RetrieveTestList`. Returns `{ mode, total, tests[] }`
+  with `{ full_name, name, class_name, type_info, run_state }` per
+  leaf. Use `full_name` as the `--filter` value for a follow-up `test
+  run`.
+- `test run --output <path>` — emits a `testsuites/testsuite/testcase`
+  JUnit XML alongside the JSON response. Format is the shape GitHub
+  Actions and GitLab CI JUnit parsers expect; failed tests carry
+  message + stack inside `<failure>`, Inconclusive/Skipped map to
+  `<skipped/>`, tests grouped by class name. Domain-reload-safe —
+  the output path threads through `TestRunnerState.MarkPending` so
+  a PlayMode run that reattaches post-reload still writes the XML.
+
+### Fixed
+
+**`test run --output` and `screenshot --output_path` now resolve
+relative paths against the CLI's cwd, not Unity's project root.**
+A relative `--output foo.xml` used to silently land in the Unity
+project directory (because Unity is the process doing the write,
+with its own working directory). That breaks the POSIX expectation
+of `udit <cmd> --output foo.xml` — the file now lands next to where
+the caller typed the command. Absolute paths pass through unchanged.
+A CLI-side `absolutizePath` helper handles both cases uniformly.
+Agents hard-coded to the old behavior should switch to absolute
+paths, which have always worked.
+
+### Changed
+
+- **Connector bumped to `0.6.1`** (`udit-connector/package.json`).
+  Adds `ListTests` tool; `RunTests.Output` and
+  `EditorScreenshot.OutputPath` parameter descriptions updated to
+  describe the new CLI-side resolution (C# fallback behavior for
+  direct HTTP callers is unchanged).
+- **Help text and shell completion** (bash/zsh/powershell/fish) gain
+  `project info/validate/preflight` and `test run/list`
+  subcommands. `--output`/`--output_path` help clarifies CLI-cwd
+  resolution.
+- **README.md / README.ko.md** gain a "Project" subsection after
+  "Transactions", describe the new `test list` / `--output` surface,
+  and note the CLI-cwd path resolution. Kept in lockstep per the
+  bilingual doc policy.
+- **Internal cleanup**: `cmd/paths.go` holds `absolutizePath` +
+  `absolutizePathParam`, shared between `test` (explicit handler)
+  and `screenshot` (default passthrough). Pre-existing
+  `cmd/asset.go` conditional simplified (De Morgan — `staticcheck
+  QF1001`); `.golangci.yml` errcheck exclude adds
+  `syscall.CloseHandle` (Windows-only, not actionable under
+  `defer`).
+
 ## [0.4.2] - 2026-04-15
 
 Closes Phase 3 (Mutate). Third same-day patch in the v0.4.x line,

@@ -784,6 +784,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 | 2026-04-15 | Phase 3 분할 세분화 (3a/3b/3c) — v0.4.0/v0.4.1 day-1 patch | transactions만 cross-cutting이라 묶기 불편해서 3b에 ObjectReference set + prefab + asset mutation을 담아 v0.4.1로 cut, transactions는 3c로 분리. Phase 2 때 v0.3.0 → v0.3.1 같은 날 릴리스 패턴 그대로 |
 | 2026-04-15 | 트랜잭션은 Unity-native API 3개로 (`IncrementCurrentGroup` + `CollapseUndoOperations` + `RevertAllDownToGroup`) | 대안은 udit이 "begin 이후 실행된 명령 목록"을 자체 추적하고 rollback 시 역순 재실행. 단점: (i) Stateless HTTP 원칙 위반 큼, (ii) 비가역적 API(asset create/move 등)는 역재실행 불가, (iii) Unity Undo와 별도 추적이라 Ctrl+Z와 udit rollback이 다르게 동작. Unity Undo를 신뢰하면 state가 `{group, name, started}` 3개, commit 후 Ctrl+Z 한 번 = udit rollback 1회 = 대칭, Unity가 지원 못 하는 건 udit도 안 함이 일관. AssetDatabase 미참여는 docs에 명시 |
 | 2026-04-15 | 트랜잭션 state는 static 필드 (도메인 리로드 시 자동 폐기) | 명시적 cleanup hook 없이 리로드 시 static wipe되는 Unity 특성 활용. 장점: 핸들이 stale 상태로 남지 않음. 단점: 부분 mutation이 Undo 스택에 남되 tx 핸들은 사라져 "묶기 미완성" 상태 — `tx status`가 no-active 반환하면 agent 인지 가능 |
+| 2026-04-15 | Phase 4 분할 — 4a(project) + 4b(test) 를 v0.4.3 interim, 4c(build) + 4d(package) 를 v0.5.0 | Phase 2/3 day-1 patch 패턴 계승. project + test 둘만으로도 JUnit XML → CI 통합 경로가 열림 = 체감 가치 라인. `build`는 가장 큰 덩어리(진행도 스트리밍/다중 타겟/IL2CPP), `package`는 중간 크기. build/package 기다리느라 test/project 출시가 밀리는 걸 피하고, v0.5.0은 Phase 4 전체 완성으로 깨끗이 cut. v0.5.0 regression 범위도 두 슬라이스로 제한 |
+| 2026-04-15 | `--output` / `--output_path` 상대경로는 **CLI cwd** 기준 (Unity 프로젝트 루트 X) | 초판은 C# 쪽에서 `Application.dataPath`의 부모(프로젝트 루트) 기준으로 resolve했음. POSIX CLI 관행 위반 — `udit <cmd> --output foo.xml`은 shell 현재 위치에 생기리라 기대. CI/GitHub Actions도 `$GITHUB_WORKSPACE` 기준 기대. 수정: Go CLI가 `filepath.Abs`로 상대→절대 변환 후 HTTP에 실음. C# 쪽은 절대경로 그대로 사용. Direct HTTP 호출자용 project-root fallback은 유지. 헬퍼 `absolutizePath` / `absolutizePathParam` (`cmd/paths.go`) 을 `test --output` (전용 핸들러)과 `screenshot --output_path` (default passthrough) 양쪽에 동일 적용. 미래 path-like 플래그도 동일 지점에서 처리 |
 
 ---
 
@@ -817,7 +819,10 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] **v0.4.1 태그 push + Release 검증** (2026-04-15)
 - [x] Phase 3c 착수 — Transactions (`tx begin/commit/rollback/status`) (2026-04-15)
 - [x] **v0.4.2 태그 push + Release 검증** (2026-04-15)
+- [x] Phase 4a 착수 — `project info/validate/preflight` (2026-04-15)
+- [x] Phase 4b 착수 — `test list` + `test run --output junit.xml` + CLI-cwd path semantics fix (2026-04-15)
+- [x] **v0.4.3 태그 push + Release 검증** (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
-- [ ] **Phase 4 (Automate) 착수** — `build player/targets/addressables`, `package add/remove/list`, `test run --output junit.xml`, `project info/validate/preflight`
+- [ ] **Phase 4c/4d 착수** — `build player/targets/addressables` + `package add/remove/list/info/resolve` (v0.5.0)
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)
