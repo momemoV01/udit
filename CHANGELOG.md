@@ -4,6 +4,20 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-15
+
+Closes Phase 4 (Automate). Two new tool surfaces — `package` (UPM)
+and `build` (player + addressables) — plus a long-overdue
+.meta GUID separation from upstream unity-cli that finally lets the
+two connectors coexist in the same Unity project. With this release,
+the Automate ROADMAP is fully shipped: agents can drive
+project-info → validate → test → package → build end-to-end without
+ever touching `exec`.
+
+Connector bumped to `0.7.0` — two new C# tools (`ManagePackage`,
+`ManageBuild`) plus the GUID separation. The two new tools are
+the visible surface; existing tools have no behavior change.
+
 ### Added
 
 **`package` namespace (6 subcommands) — new `ManagePackage` tool.**

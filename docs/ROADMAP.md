@@ -830,7 +830,8 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] **v0.4.3 태그 push + Release 검증** (2026-04-15)
 - [x] Phase 4d 착수 — `package list/add/remove/info/search/resolve` (2026-04-15, Connector bump 보류, v0.5.0과 함께 0.7.0)
 - [x] Phase 4c 착수 — `build player/targets/addressables/cancel` (2026-04-15, Connector bump 보류, v0.5.0과 함께 0.7.0)
-- [ ] **v0.5.0 cut** — Connector 0.6.2 → 0.7.0, CLI tag v0.5.0, CHANGELOG `[Unreleased]` → `[0.5.0]`, Phase 4 전체 완료 표시
+- [x] **v0.5.0 태그 push + Release 검증** (2026-04-15) — Connector 0.7.0, Phase 4 (Automate) 전체 완성
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
+- [ ] **Phase 5 (Stream) 착수** — `watch` (파일 변경 + 자동화), `log tail -f`, optional `run` 스크립트 러너
 - [ ] `component set`에서 Curve/Gradient/ManagedReference + 씬 오브젝트 참조 쓰기 지원 (v0.4.x 증분)
 - [ ] 대규모 씬 성능 측정 (10k+ GO 프로젝트 확보 후 `scene tree`/`go find`/`asset references` 응답 시간 실측)
