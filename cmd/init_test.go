@@ -130,7 +130,8 @@ func TestInit_ForceOverwrites(t *testing.T) {
 	}
 }
 
-func TestInit_DefaultOutputInCwd(t *testing.T) {
+func TestInit_DefaultOutputFallsBackToCwd(t *testing.T) {
+	// No Assets/ or ProjectSettings/ → detection fails → cwd fallback.
 	dir := t.TempDir()
 	prev, _ := os.Getwd()
 	defer func() { _ = os.Chdir(prev) }()
@@ -143,5 +144,62 @@ func TestInit_DefaultOutputInCwd(t *testing.T) {
 	expected := filepath.Join(dir, ".udit.yaml")
 	if _, err := os.Stat(expected); err != nil {
 		t.Errorf("expected file at %s: %v", expected, err)
+	}
+}
+
+func TestInit_DefaultOutputDetectsUnityRoot(t *testing.T) {
+	// Simulate a Unity project: <root>/Assets + <root>/ProjectSettings.
+	// Run from a nested subdir so detection must walk up.
+	root := t.TempDir()
+	for _, d := range []string{"Assets", "ProjectSettings", filepath.Join("Assets", "Scripts")} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	nested := filepath.Join(root, "Assets", "Scripts")
+	prev, _ := os.Getwd()
+	defer func() { _ = os.Chdir(prev) }()
+	if err := os.Chdir(nested); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := initCmd([]string{"--watch"}); err != nil {
+		t.Fatalf("initCmd: %v", err)
+	}
+	// Must land at project root, NOT inside Assets/Scripts.
+	atRoot := filepath.Join(root, ".udit.yaml")
+	if _, err := os.Stat(atRoot); err != nil {
+		t.Errorf("expected file at detected root %s: %v", atRoot, err)
+	}
+	atNested := filepath.Join(nested, ".udit.yaml")
+	if _, err := os.Stat(atNested); err == nil {
+		t.Errorf("file should NOT be created at nested cwd %s", atNested)
+	}
+}
+
+func TestResolveInitTarget_ExplicitOutputWins(t *testing.T) {
+	// Even inside a detected Unity project, explicit --output must override.
+	root := t.TempDir()
+	for _, d := range []string{"Assets", "ProjectSettings"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	prev, _ := os.Getwd()
+	defer func() { _ = os.Chdir(prev) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	explicit := filepath.Join(root, "custom", "my.yaml")
+	abs, source, err := resolveInitTarget(explicit)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if abs != explicit {
+		t.Errorf("abs = %q, want %q", abs, explicit)
+	}
+	if source != "from --output" {
+		t.Errorf("source = %q, want 'from --output'", source)
 	}
 }

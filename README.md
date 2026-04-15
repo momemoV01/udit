@@ -723,20 +723,22 @@ udit list
 
 ### Project scaffold (v0.6.1+)
 
-`udit init` drops a `.udit.yaml` scaffold into the current directory with
-commented-out placeholders for every field — the same file format `udit
-watch`, `udit exec`, and `udit --port` already read.
+`udit init` drops a `.udit.yaml` scaffold at your **Unity project root**
+(autodetected by walking up from cwd for a directory with both `Assets/`
+and `ProjectSettings/`). Falls back to cwd when no Unity project is
+found. `--output` overrides both.
 
 ```bash
-udit init                     # minimal scaffold (watch section commented out)
-udit init --watch             # also include a ready-to-run watch: section
-udit init --output ./.udit.yaml
-udit init --force --watch     # overwrite an existing config with the watch example
+# From anywhere inside the Unity project
+udit init                     # minimal scaffold at detected project root
+udit init --watch             # + a ready-to-run watch: section
+udit init --output ./my.yaml  # explicit path (skips autodetect)
+udit init --force --watch     # overwrite an existing config
 ```
 
 The `--watch` variant ships two sample hooks (`compile_cs` and
-`reserialize_yaml`) that work as-is in any Unity project — edit the
-`paths:` list to scope them.
+`reserialize_yaml`) that work as-is — just edit the `paths:` list to
+scope them.
 
 ### Watch (v0.6.0+)
 

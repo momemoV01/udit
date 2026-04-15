@@ -4,6 +4,34 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-04-15
+
+Fixes the `udit init` default target so it lands at the **Unity project
+root** instead of blindly writing to cwd. Reported when a user ran
+`udit init --watch` from `C:\WINDOWS\System32` and hit "Access is
+denied" — the previous behavior wrote to whatever cwd happened to be,
+which is wrong for a Unity-centric tool.
+
+### Changed
+
+- `udit init` without `--output` now:
+  1. walks up from cwd looking for a directory with BOTH `Assets/` and
+     `ProjectSettings/` (same heuristic `udit watch` uses)
+  2. falls back to cwd when no Unity project is found
+  3. `--output` overrides both (unchanged)
+- Success message prints how the target was chosen, e.g.
+  `Wrote C:\Projects\MyGame\.udit.yaml (Unity project root detected)`
+  so users aren't guessing where the file landed.
+- Write failures now surface actionable guidance suggesting the Unity
+  project directory or `--output`, instead of the raw OS error.
+
+### Fixed
+
+- `detectProjectRoot(cwd)` used to call `filepath.Dir(cwd)` unconditionally
+  (assumed `startHint` was always a file path like the discovered
+  `.udit.yaml`). Now stats `start` and only steps to parent when it's a
+  file — `init` passes cwd directly.
+
 ## [0.6.1] - 2026-04-15
 
 Closes the first-use UX gap in v0.6.0: `udit watch` requires a

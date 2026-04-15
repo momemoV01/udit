@@ -212,9 +212,11 @@ func loadWatchConfig(explicitPath string) (watch.WatchCfg, string, error) {
 	return cfg.Watch, cfgPath, nil
 }
 
-// detectProjectRoot heuristic: from the config file dir, walk up looking
-// for a directory that has BOTH `Assets/` and `ProjectSettings/` as
-// siblings — a classic Unity project root.
+// detectProjectRoot heuristic: walk up from `start` looking for a
+// directory that has BOTH `Assets/` and `ProjectSettings/` as children —
+// the canonical Unity project root. `start` may be a file path (e.g.
+// the discovered `.udit.yaml`) or a directory (e.g. cwd for `init`);
+// files are resolved to their parent before walking.
 func detectProjectRoot(startHint string) (string, error) {
 	start := startHint
 	if start == "" {
@@ -224,7 +226,12 @@ func detectProjectRoot(startHint string) (string, error) {
 		}
 		start = cwd
 	}
-	dir := filepath.Dir(start)
+	// Normalize: if start points at a file, use its containing directory.
+	// If it's a directory we walk from there directly.
+	dir := start
+	if info, statErr := os.Stat(start); statErr == nil && !info.IsDir() {
+		dir = filepath.Dir(start)
+	}
 	for {
 		assetsInfo, errA := os.Stat(filepath.Join(dir, "Assets"))
 		psInfo, errP := os.Stat(filepath.Join(dir, "ProjectSettings"))

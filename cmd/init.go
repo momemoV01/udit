@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 )
 
-// initCmd writes a `.udit.yaml` scaffold to the current working directory
-// (or --output). Handles --watch (embed a watch: section with example
-// hooks) and --force (overwrite existing). Parallels `git init` /
-// `npm init` / `go mod init` — a tiny ceremony that unblocks first-time
-// users of `udit watch` who otherwise hit a bare "no .udit.yaml found"
-// error with no guidance.
+// initCmd writes a `.udit.yaml` scaffold. When --output is omitted, the
+// target resolves to the Unity project root discovered by walking up
+// from cwd (same heuristic `udit watch` uses: a directory with both
+// `Assets/` and `ProjectSettings/`). Falls back to cwd when no Unity
+// project is found — useful for non-Unity contexts or tests.
+//
+// Flags: --watch embeds a watch: section with sample hooks; --force
+// overwrites an existing file.
 func initCmd(subArgs []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	var (
@@ -21,7 +23,7 @@ func initCmd(subArgs []string) error {
 		withWatch bool
 		force     bool
 	)
-	fs.StringVar(&output, "output", ".udit.yaml", "Target path (default: .udit.yaml in cwd)")
+	fs.StringVar(&output, "output", "", "Target path (default: Unity project root / cwd fallback)")
 	fs.BoolVar(&withWatch, "watch", false, "Include a watch: section with example hooks")
 	fs.BoolVar(&force, "force", false, "Overwrite an existing file")
 	fs.Usage = func() { fmt.Fprint(os.Stderr, initHelp()) }
@@ -29,9 +31,9 @@ func initCmd(subArgs []string) error {
 		return err
 	}
 
-	abs, err := filepath.Abs(output)
+	abs, source, err := resolveInitTarget(output)
 	if err != nil {
-		return fmt.Errorf("resolve --output: %w", err)
+		return err
 	}
 
 	if _, statErr := os.Stat(abs); statErr == nil && !force {
@@ -46,16 +48,48 @@ func initCmd(subArgs []string) error {
 
 	content := scaffoldTemplate(withWatch)
 	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		// Shape this into actionable guidance — the most common hit is
+		// running from a write-protected directory (System32, read-only
+		// share) expecting Unity-project behavior. lint (ST1005) forbids
+		// trailing punctuation/newline on error strings, so the guidance
+		// prints to stderr separately.
+		fmt.Fprintln(os.Stderr,
+			"  `udit init` writes to the Unity project root if detected, otherwise cwd.\n"+
+				"  Try running inside your Unity project directory, or pass --output <path>.")
 		return fmt.Errorf("write %s: %w", abs, err)
 	}
 
-	fmt.Printf("Wrote %s\n", abs)
+	fmt.Printf("Wrote %s (%s)\n", abs, source)
 	if withWatch {
 		fmt.Println("Next: `udit watch` to start the file-change automation loop.")
 	} else {
 		fmt.Println("Next: edit the file to taste. `udit init --force --watch` drops a watch: section with sample hooks.")
 	}
 	return nil
+}
+
+// resolveInitTarget picks the scaffold destination. Explicit --output wins;
+// otherwise walks up from cwd looking for a Unity project root and
+// falls back to cwd. Returns the absolute target path plus a human
+// phrase describing how it was chosen (printed back to the user so they
+// don't guess where the file landed).
+func resolveInitTarget(explicitOutput string) (string, string, error) {
+	if explicitOutput != "" {
+		abs, err := filepath.Abs(explicitOutput)
+		if err != nil {
+			return "", "", fmt.Errorf("resolve --output: %w", err)
+		}
+		return abs, "from --output", nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", "", fmt.Errorf("resolve cwd: %w", err)
+	}
+	if root, rerr := detectProjectRoot(cwd); rerr == nil {
+		return filepath.Join(root, ".udit.yaml"), "Unity project root detected", nil
+	}
+	return filepath.Join(cwd, ".udit.yaml"), "no Unity project detected — using cwd", nil
 }
 
 // scaffoldTemplate composes the yaml scaffold. Always includes commented-
@@ -126,18 +160,22 @@ watch:
 func initHelp() string {
 	return `Usage: udit init [options]
 
-Scaffold a ` + "`.udit.yaml`" + ` in the current directory (or at --output).
+Scaffold a ` + "`.udit.yaml`" + `. Default target resolution:
+  1. walk up from cwd looking for a Unity project root
+     (a directory containing BOTH Assets/ and ProjectSettings/)
+  2. fall back to cwd if no Unity project is found
+  3. --output overrides both
 
 Options:
-  --output PATH    Target path (default: .udit.yaml in cwd)
+  --output PATH    Target path (skips autodetect)
   --watch          Include a watch: section with example hooks
                    (compile_cs + reserialize_yaml)
   --force          Overwrite an existing file
 
 Examples:
-  udit init                      # minimal scaffold with commented-out sections
-  udit init --watch              # same + concrete watch hooks
+  udit init                      # from anywhere inside a Unity project
+  udit init --watch              # + concrete watch hooks
   udit init --output ./my.yaml
-  udit init --force --watch      # rewrite existing config with watch hooks
+  udit init --force --watch      # rewrite existing config
 `
 }

@@ -840,6 +840,7 @@ git log upstream/master --oneline --since="2 weeks ago"
 - [x] Phase 5.1 착수 — `watch` (fsnotify + .udit.yaml hooks + 서킷 브레이커 + .meta collapse) (2026-04-15)
 - [x] **v0.6.0 태그 push + Release 검증** (2026-04-15) — Phase 5.1 완성 (watch만; 5.2 log tail은 별도 릴리스)
 - [x] v0.6.1 patch — `udit init` scaffold (watch UX gap 해소) (2026-04-15)
+- [x] v0.6.2 patch — `udit init` 기본 target을 Unity 프로젝트 루트 자동 탐지로 (cwd 기반 → walk-up) (2026-04-15)
 - [ ] Public 전환 여부 결정 (Unity Connector 설치 테스트 + `udit update` 정상화 위해)
 - [ ] **Phase 5.2 (log tail -f)** — 콘솔 로그 SSE 스트리밍 (connector C# SSE 엔드포인트 필요)
 - [ ] **Phase 5.3 (run)** optional — .udit.yaml 기반 복합 워크플로 러너
