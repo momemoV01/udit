@@ -1,0 +1,10 @@
+# Go source files must use LF regardless of platform — gofmt enforces LF,
+# and golangci-lint fmt --diff will report false positives on CRLF checkouts.
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+
+# Shell scripts: always LF (CRLF breaks shebang on Unix).
+*.sh text eol=lf
+
+# Keep everything else at Git's default (respects core.autocrlf).
