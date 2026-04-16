@@ -74,9 +74,9 @@ namespace UditConnector.Tools
                     return new SuccessResponse("Profiler status", new
                     {
                         enabled = ProfilerDriver.enabled,
-                        firstFrame = first, lastFrame = last,
-                        frameCount = last >= first ? last - first + 1 : 0,
-                        isPlaying = Application.isPlaying
+                        first_frame = first, last_frame = last,
+                        frame_count = last >= first ? last - first + 1 : 0,
+                        is_playing = Application.isPlaying
                     });
                 case "clear":
                     ProfilerDriver.ClearAllFrames();

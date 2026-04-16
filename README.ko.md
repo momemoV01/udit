@@ -1195,6 +1195,33 @@ udit의 보안 모델은 "에디터를 연 로컬 사용자를 신뢰한다" 입
 | **호환성** | MCP 호환 클라이언트만 | shell 있는 모든 것 |
 | **커스텀 tool** | 동일 `[Attribute]` + `HandleCommand` 패턴 | 동일 |
 
+## API 안정성
+
+**v1.0.0**부터 udit은 [Semantic Versioning](https://semver.org)을 엄격히 따릅니다.
+
+| 대상 | v1.0부터 안정 | 예시 |
+|---|---|---|
+| CLI 명령 및 하위 명령 이름 | 예 | `udit console`, `udit go find` |
+| CLI 플래그 이름 | 예 | `--json`, `--port`, `--limit` |
+| JSON envelope 형태 | 예 | `{ success, message, data, error_code }` |
+| 에러 코드 (UCI-xxx) | 예 — 코드는 재사용하지 않음 | `UCI-001`, `UCI-042` |
+| 기존 응답 필드 이름 | 예 | `data.matches`, `data.count` |
+
+**하위 호환 추가** (minor 버전): 새 명령, 새 플래그, 응답 `data` 내 새 필드. 기존 필드는 1.x 라인에서 이름 변경이나 제거하지 않습니다.
+
+**호환성 깨는 변경** (major 버전만): minor 릴리스에서 먼저 경고와 함께 deprecation 표시 후, 다음 major에서 제거합니다.
+
+## Unity 호환성
+
+| Unity 버전 | 상태 | 비고 |
+|---|---|---|
+| 6000.4.x (Unity 6.1) | 테스트됨 | 6000.4.2f1에서 벤치마크 |
+| 6000.0.x -- 6000.3.x (Unity 6.0) | 최선 노력 | 동일 API 표면; 회귀 테스트 미수행 |
+| 2022.3 LTS | 미테스트 | 호환 가능성 있음; 테스트 결과 PR 환영 |
+| < 2022 | 미지원 | LogEntries, Profiler 등 내부 API 차이 |
+
+Connector는 `package.json`에서 `"unity": "6000.0"`을 최소 버전으로 선언합니다. 이전 버전에서도 패키지가 로드될 수 있지만 검증되지 않았습니다. 목록에 없는 버전에서 테스트했다면 결과와 함께 PR을 열어주세요.
+
 ## 로드맵
 
 `v1.0.0` (API 동결, production-ready)까지의 단계별 계획은 [`docs/ROADMAP.ko.md`](./docs/ROADMAP.ko.md) 참고. 지금까지 출시된 것:
@@ -1206,11 +1233,14 @@ udit의 보안 모델은 "에디터를 연 로컬 사용자를 신뢰한다" 입
 - **v0.6.x — Stream (watch)** — `.udit.yaml` hook 기반 `watch` 모드 + 파일시스템 debounce
 - **v0.7.x — Stream (log tail)** — SSE `log tail` 자동 재연결 (도메인 리로드 포함); `build player --il2cpp` + preset
 - **v0.8.x — Run** — 재귀 + cycle 감지 있는 `udit run <task>` 스크립트 러너; `config` namespace; ad-hoc `watch --path`
-- **v0.9.0 — 고급 component set** *(현재)* — AnimationCurve / Gradient / ManagedReference / 씬 참조
+- **v0.9.0 — 고급 component set** — AnimationCurve / Gradient / ManagedReference / 씬 참조
+- **v0.10.0 — 자동완성 자동 등록** *(현재)* — `completion install` 자동화, 보안 하드닝
 
 예정:
 
 - **v1.0.0 — Polish & Freeze** — 커버리지 목표 상향, cookbook 문서, API commitment
+
+실전 워크플로우 레시피(CI 스모크 테스트, 프리팹 일괄 편집, 빌드 자동화 등)는 [`docs/COOKBOOK.ko.md`](./docs/COOKBOOK.ko.md)를 참고하세요.
 
 ## 감사의 말
 

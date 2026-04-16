@@ -191,6 +191,10 @@ Watch:
   watch --no-exec               Print what would run without executing
   watch --path <glob> --on-change <cmd>    Ad-hoc hook (no config needed)
 
+Doctor:
+  doctor                        Check udit installation, Unity connectivity, and common issues
+  doctor --json                 Machine-readable output for agents
+
 Completion:
   completion install            Persist completion into your shell rc.
                                 install.sh / install.ps1 already runs
@@ -1218,6 +1222,29 @@ Notes:
     ` + "`install.ps1`" + ` with --no-completion or UDIT_NO_COMPLETION=1.
   - Half-open marker (start without end) in the rc file is treated
     as an error rather than guessing — manually clean up first.
+`)
+	case "doctor":
+		fmt.Print(`Usage: udit doctor [options]
+
+Diagnose your udit installation and Unity connectivity.
+
+Checks:
+  1. Binary     — version, location, PATH registration
+  2. Completion — shell completion installed in rc file
+  3. Config     — .udit.yaml discovery (walk-up from cwd)
+  4. Instances  — Unity instance files, heartbeat freshness
+  5. Pitfalls   — PATH shadowing, editor throttling warnings
+
+Each check reports [ok], [warn], or [fail].
+
+Options:
+  --json        Machine-readable output with detailed check results.
+                Response shape: { checks: [{ name, status, message, details }] }
+
+Examples:
+  udit doctor
+  udit doctor --json
+  udit doctor --json | jq '.data.checks[] | select(.status != "ok")'
 `)
 	case "custom-tools", "custom", "tools":
 		fmt.Print(`How to write custom tools for udit

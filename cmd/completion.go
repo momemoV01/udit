@@ -447,7 +447,7 @@ _udit_complete() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands="asset build completion component console editor exec go help list menu package prefab profiler project reserialize scene screenshot status test tx update version"
+    local commands="asset build completion component console doctor editor exec go help list menu package prefab profiler project reserialize scene screenshot status test tx update version"
     local globals="--port --project --timeout --json --help"
 
     case "$prev" in
@@ -594,6 +594,7 @@ _udit() {
         'package:UPM list/add/remove/info/search/resolve'
         'build:Player builds (player/targets/addressables/cancel)'
         'console:Read console logs'
+        'doctor:System health check'
         'exec:Execute C# code'
         'list:List all registered tools'
         'status:Show Unity Editor state'
@@ -635,7 +636,7 @@ Register-ArgumentCompleter -Native -CommandName udit -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @(
-        'editor', 'scene', 'go', 'component', 'asset', 'prefab', 'tx', 'project', 'package', 'build', 'console', 'exec', 'list', 'status', 'test',
+        'editor', 'scene', 'go', 'component', 'asset', 'prefab', 'tx', 'project', 'package', 'build', 'console', 'doctor', 'exec', 'list', 'status', 'test',
         'profiler', 'screenshot', 'reserialize', 'menu',
         'update', 'help', 'version', 'completion'
     )
@@ -695,6 +696,7 @@ complete -c udit -n "__fish_use_subcommand" -a "project"     -d "Project info / 
 complete -c udit -n "__fish_use_subcommand" -a "package"     -d "UPM list/add/remove/info/search/resolve"
 complete -c udit -n "__fish_use_subcommand" -a "build"       -d "Player builds (player/targets/addressables/cancel)"
 complete -c udit -n "__fish_use_subcommand" -a "console"     -d "Read console logs"
+complete -c udit -n "__fish_use_subcommand" -a "doctor"      -d "System health check"
 complete -c udit -n "__fish_use_subcommand" -a "exec"        -d "Execute C# code"
 complete -c udit -n "__fish_use_subcommand" -a "list"        -d "List registered tools"
 complete -c udit -n "__fish_use_subcommand" -a "status"      -d "Show Unity Editor state"

@@ -81,6 +81,8 @@ func Execute() error {
 		return runCmd(subArgs, flagJSON)
 	case "config":
 		return configCmd(subArgs, flagJSON)
+	case "doctor":
+		return doctorCmd(subArgs, flagJSON)
 	case "watch":
 		// watch is a long-running command that doesn't require Unity to
 		// be alive at startup — hooks may run when Unity is off (e.g.

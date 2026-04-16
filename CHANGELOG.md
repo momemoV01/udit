@@ -4,6 +4,37 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+### Added
+
+- **`udit doctor`** — new diagnostic command that checks binary location,
+  version, PATH registration, shell completion install status, `.udit.yaml`
+  discovery, Unity instance heartbeat freshness, and common pitfalls (PATH
+  shadowing, editor throttling). Supports `--json` for agent consumption.
+- **Cookbook** — `docs/COOKBOOK.md` (+ Korean `docs/COOKBOOK.ko.md`) with 7
+  practical workflow recipes: CI smoke test, prefab batch edit, build
+  automation with presets, asset cleanup, log monitoring, project health
+  report, and scene migration with `.udit.yaml run`.
+- **API Stability** section in README declaring semver commitment for v1.0:
+  stable CLI commands/flags, JSON envelope shape, error codes (UCI-xxx),
+  existing response field names; backward-compatible additions in minor.
+- **Unity Compatibility** matrix in README: 6000.4.x tested, 6000.0.x
+  best-effort, 2022.3 LTS untested, <2022 unsupported.
+
+### Changed
+
+- **`console --json` data shape** (**breaking**): `data` was a bare
+  `[]string`; now wrapped in `{"entries": [...], "count": N}` to match
+  every other tool's envelope convention (D1/B3).
+- **`profiler status --json` key names** (**breaking**): `firstFrame`,
+  `lastFrame`, `frameCount`, `isPlaying` renamed to snake_case
+  (`first_frame`, `last_frame`, `frame_count`, `is_playing`) to match
+  the project-wide convention.
+- **Connector version** bumped to 0.10.0 for the above breaking changes.
+- **Release checksums**: `release.yml` now generates `SHA256SUMS.txt`
+  alongside binaries. `install.sh` and `install.ps1` verify the checksum
+  after download (skip with `--no-checksum` / `-NoChecksum`).
+- **CI matrix**: `ci.yml` now runs on Ubuntu, macOS, and Windows.
+
 ## [0.10.0] - 2026-04-16
 
 ### Added

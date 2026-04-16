@@ -58,8 +58,13 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: Generate checksums
+        run: sha256sum udit-* > SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: udit-*
+          files: |
+            udit-*
+            SHA256SUMS.txt

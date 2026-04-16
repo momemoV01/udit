@@ -1207,6 +1207,33 @@ udit's security model is "trusted local user with the Editor open". If that's no
 | **Compatibility** | MCP-compatible clients only | Anything with a shell |
 | **Custom tools** | Same `[Attribute]` + `HandleCommand` pattern | Same |
 
+## API Stability
+
+Starting with **v1.0.0**, udit follows [Semantic Versioning](https://semver.org) strictly.
+
+| Surface | Stable from v1.0 | Example |
+|---|---|---|
+| CLI command & subcommand names | Yes | `udit console`, `udit go find` |
+| CLI flag names | Yes | `--json`, `--port`, `--limit` |
+| JSON envelope shape | Yes | `{ success, message, data, error_code }` |
+| Error codes (UCI-xxx) | Yes — codes are never reused | `UCI-001`, `UCI-042` |
+| Existing response field names | Yes | `data.matches`, `data.count` |
+
+**Backward-compatible additions** (minor version): new commands, new flags, new fields in response `data`. Existing fields are never renamed or removed in the 1.x line.
+
+**Breaking changes** (major version only): a breaking change is first deprecated with a warning in a minor release, then removed in the next major.
+
+## Unity Compatibility
+
+| Unity Version | Status | Notes |
+|---|---|---|
+| 6000.4.x (Unity 6.1) | Tested | Benchmarked on 6000.4.2f1 |
+| 6000.0.x -- 6000.3.x (Unity 6.0) | Best-effort | Same API surface; not regression-tested |
+| 2022.3 LTS | Not tested | Likely compatible; PRs with test results welcome |
+| < 2022 | Unsupported | Internal API differences in LogEntries, Profiler, etc. |
+
+The Connector declares `"unity": "6000.0"` as its minimum in `package.json`. Earlier versions may load the package but are not verified. If you test on an unlisted version, please open a PR adding your results.
+
 ## Roadmap
 
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the phased plan through `v1.0.0` (API-frozen, production-ready). Shipped so far:
@@ -1218,11 +1245,14 @@ See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the phased plan through `v1.0.0` 
 - **v0.6.x — Stream (watch)** — `watch` mode with `.udit.yaml` hooks and filesystem debouncing
 - **v0.7.x — Stream (log tail)** — `log tail` SSE with auto-reconnect across domain reloads; `build player --il2cpp` + presets
 - **v0.8.x — Run** — `udit run <task>` script runner with recursion + cycle detection; `config` namespace; ad-hoc `watch --path`
-- **v0.9.0 — Advanced component writes** *(current)* — AnimationCurve / Gradient / ManagedReference / scene references
+- **v0.9.0 — Advanced component writes** — AnimationCurve / Gradient / ManagedReference / scene references
+- **v0.10.0 — Auto-install completion** *(current)* — `completion install` automation, security hardening
 
 Upcoming:
 
 - **v1.0.0 — Polish & Freeze** — higher coverage targets, cookbook docs, API commitment
+
+See [`docs/COOKBOOK.md`](./docs/COOKBOOK.md) for practical workflow recipes (CI smoke tests, prefab batch edits, build automation, and more).
 
 ## Acknowledgments
 

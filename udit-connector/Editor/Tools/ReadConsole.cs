@@ -129,7 +129,11 @@ namespace UditConnector.Tools
                 try { _endGettingEntriesMethod.Invoke(null, null); } catch { }
             }
 
-            return new SuccessResponse($"Retrieved {entries.Count} entries.", entries);
+            return new SuccessResponse($"Retrieved {entries.Count} entries.", new
+            {
+                entries,
+                count = entries.Count,
+            });
         }
 
         private static string FormatMessage(string message, string mode)
