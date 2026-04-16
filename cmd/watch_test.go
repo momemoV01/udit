@@ -50,7 +50,9 @@ func TestLoadWatchConfig_FallsBackToWalkUp(t *testing.T) {
 	writeHeartbeat(t, home, filepath.ToSlash(projectRoot), 8591)
 
 	// Separate cwd with a real config.
-	cwdProject := t.TempDir()
+	// EvalSymlinks: on macOS /var → /private/var; os.Getwd() resolves
+	// the symlink but t.TempDir() returns the unresolved path.
+	cwdProject, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Setenv("HOME", home)        // keep instance-dir isolation
 	t.Setenv("USERPROFILE", home) // for LoadConfig's $HOME boundary
 	cfgPath := filepath.Join(cwdProject, ".udit.yaml")

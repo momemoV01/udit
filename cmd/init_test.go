@@ -274,7 +274,9 @@ func TestResolveInitTarget_PortOverrideDoesNotUseStubPath(t *testing.T) {
 	defer func() { flagPort = 0 }()
 
 	// Unity project layout in cwd so filesystem detection succeeds.
-	root := t.TempDir()
+	// EvalSymlinks: on macOS /var → /private/var; os.Getwd() resolves
+	// the symlink but t.TempDir() returns the unresolved path.
+	root, _ := filepath.EvalSymlinks(t.TempDir())
 	for _, d := range []string{"Assets", "ProjectSettings"} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
