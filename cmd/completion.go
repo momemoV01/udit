@@ -46,8 +46,7 @@ step. Pass --no-completion to either installer to skip it.
 // or "uninstall" as the first arg, persists to the user's shell rc.
 func completionCmd(args []string) error {
 	if len(args) == 0 {
-		fmt.Fprint(os.Stderr, completionUsage)
-		os.Exit(1)
+		return fmt.Errorf("missing subcommand or shell name\n\n%s", completionUsage)
 	}
 	switch strings.ToLower(args[0]) {
 	case "install":
@@ -58,17 +57,14 @@ func completionCmd(args []string) error {
 		// Explicit form so we can grow more flags later without colliding
 		// with shell names. `udit completion print bash` == `udit completion bash`.
 		if len(args) < 2 {
-			fmt.Fprint(os.Stderr, completionUsage)
-			os.Exit(1)
+			return fmt.Errorf("missing shell name after 'print'\n\n%s", completionUsage)
 		}
 		return printCompletionScript(args[1])
 	case "bash", "zsh", "powershell", "pwsh", "fish":
 		return printCompletionScript(args[0])
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand or shell: %q\n\n%s", args[0], completionUsage)
-		os.Exit(1)
+		return fmt.Errorf("unknown subcommand or shell: %q\n\n%s", args[0], completionUsage)
 	}
-	return nil
 }
 
 // printCompletionScript writes the completion script for the named shell
@@ -85,8 +81,7 @@ func printCompletionScript(shell string) error {
 	case "fish":
 		fmt.Print(fishScript)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown shell: %q\n\n%s", shell, completionUsage)
-		os.Exit(1)
+		return fmt.Errorf("unknown shell: %q\n\n%s", shell, completionUsage)
 	}
 	return nil
 }

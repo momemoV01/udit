@@ -90,8 +90,7 @@ namespace UditConnector.Tools
             var tag = p.Get("tag");
             var component = p.Get("component");
             var includeInactive = p.GetBool("include_inactive", true);
-            var limit = Clamp(p.GetInt("limit", DefaultLimit) ?? DefaultLimit, 1, MaxLimit);
-            var offset = Math.Max(0, p.GetInt("offset", 0) ?? 0);
+            var (limit, offset) = Pagination.Parse(p, DefaultLimit, MaxLimit);
 
             Regex nameRegex = null;
             if (!string.IsNullOrEmpty(name))
@@ -150,7 +149,7 @@ namespace UditConnector.Tools
                     offset,
                     limit,
                     returned = returned.Count,
-                    has_more = offset + returned.Count < total,
+                    has_more = Pagination.HasMore(offset, returned.Count, total),
                     matches = returned,
                 });
         }
@@ -242,7 +241,6 @@ namespace UditConnector.Tools
             return string.Join("/", parts);
         }
 
-        static int Clamp(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
 
         // --- Mutations -----------------------------------------------------
 

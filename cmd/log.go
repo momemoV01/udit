@@ -222,26 +222,22 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 func logListCmd(subArgs []string, globalJSON bool) error {
 	inst, err := client.DiscoverInstance(flagProject, flagPort)
 	if err != nil {
-		reportError(err, "console", nil, globalJSON)
-		os.Exit(1)
+		return err
 	}
 	if err := waitForAlive(inst.Port, flagTimeout); err != nil {
-		reportError(err, "console", inst, globalJSON)
-		os.Exit(1)
+		return err
 	}
 	params, err := buildParams(subArgs, nil)
 	if err != nil {
-		reportError(err, "console", inst, globalJSON)
-		os.Exit(1)
+		return err
 	}
 	resp, err := client.Send(inst, "console", params, flagTimeout)
 	if err != nil {
-		reportError(err, "console", inst, globalJSON)
-		os.Exit(1)
+		return err
 	}
 	printResponse(resp, "console", inst, globalJSON)
 	if !resp.Success {
-		os.Exit(1)
+		return fmt.Errorf("console command failed")
 	}
 	return nil
 }

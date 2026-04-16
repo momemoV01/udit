@@ -25,11 +25,22 @@ CLI tool to control Unity Editor from the command line. Agent-first fork of unit
 ```
 cmd/                  # Go CLI — thin passthrough layer
   root.go             # Entry point, flag/arg parsing, default passthrough
+  output.go           # JSON envelope formatting, error classification
+  help.go             # Built-in help text for all commands
+  doctor.go           # Installation diagnostics
   editor.go           # editor command (waitForReady polling)
   test.go             # test command (PlayMode result polling)
   status.go           # status, waitForAlive, heartbeat reading
+  scene.go, go.go, component.go, asset.go, prefab.go  # Unity resource commands
+  build.go, project.go, package.go                     # Project-level commands
+  log.go, watch.go, run.go                             # Streaming & automation
+  tx.go               # Transaction batching
+  config.go, config_cmd.go, init.go                    # Configuration
+  completion.go       # Shell completion (bash/zsh/fish/powershell)
   update.go           # self-update from GitHub releases
   version_check.go    # periodic update notice (12h interval)
+  params.go           # Flag parsing utilities
+  paths.go            # Path resolution helpers
 internal/client/      # Unity HTTP client, instance discovery
 udit-connector/       # C# Unity Editor package (UPM)
   Editor/
