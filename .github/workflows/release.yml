@@ -44,7 +44,14 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: udit-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: udit-*
+          # Upload only the built binary. Previous `udit-*` glob matched
+          # the `udit-connector/` directory too, which broke sha256sum
+          # in the release job. Missing `.exe` on non-Windows is fine —
+          # upload-artifact emits a warning but doesn't fail.
+          path: |
+            udit-${{ matrix.goos }}-${{ matrix.goarch }}
+            udit-${{ matrix.goos }}-${{ matrix.goarch }}.exe
+          if-no-files-found: ignore
 
   release:
     needs: build
