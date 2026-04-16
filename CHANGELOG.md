@@ -35,6 +35,13 @@ All notable changes to **udit** are documented here. This project follows [Seman
   after download (skip with `--no-checksum` / `-NoChecksum`).
 - **CI matrix**: `ci.yml` now runs on Ubuntu, macOS, and Windows.
 
+### Security
+
+- **`udit update` checksum verification**: self-update now downloads
+  `SHA256SUMS.txt` from the release and verifies the binary hash before
+  replacing the executable. Mismatch aborts the update. Older releases
+  without checksums proceed with a warning.
+
 ## [0.10.0] - 2026-04-16
 
 ### Added
