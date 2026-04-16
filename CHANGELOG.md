@@ -4,43 +4,66 @@ All notable changes to **udit** are documented here. This project follows [Seman
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-16
+
+**First stable release.** API is now frozen per [semver](https://semver.org) —
+see the [API Stability](./README.md#api-stability) section of the README for
+the surface contract. This release consolidates the v0.x line with final
+quality, security, and documentation polish.
+
 ### Added
 
-- **`udit doctor`** — new diagnostic command that checks binary location,
-  version, PATH registration, shell completion install status, `.udit.yaml`
-  discovery, Unity instance heartbeat freshness, and common pitfalls (PATH
-  shadowing, editor throttling). Supports `--json` for agent consumption.
-- **Cookbook** — `docs/COOKBOOK.md` (+ Korean `docs/COOKBOOK.ko.md`) with 7
-  practical workflow recipes: CI smoke test, prefab batch edit, build
-  automation with presets, asset cleanup, log monitoring, project health
-  report, and scene migration with `.udit.yaml run`.
-- **API Stability** section in README declaring semver commitment for v1.0:
-  stable CLI commands/flags, JSON envelope shape, error codes (UCI-xxx),
-  existing response field names; backward-compatible additions in minor.
-- **Unity Compatibility** matrix in README: 6000.4.x tested, 6000.0.x
-  best-effort, 2022.3 LTS untested, <2022 unsupported.
+- **`udit doctor`** — diagnostic command that checks binary location, version,
+  PATH registration, shell completion install status, `.udit.yaml` discovery,
+  Unity instance heartbeat freshness, and common pitfalls. Supports `--json`
+  for agent consumption.
+- **Cookbook** — `docs/COOKBOOK.md` (+ `docs/COOKBOOK.ko.md`) with 7 practical
+  workflow recipes: CI smoke test, prefab batch edit, build automation with
+  presets, asset cleanup, log monitoring, project health report, and scene
+  migration with `.udit.yaml run`.
+- **Command reference** split out — `docs/COMMANDS.md` (+ `.ko.md`) is now the
+  full reference with every command, example, and flag.
+- **Custom tools guide** split out — `docs/CUSTOM_TOOLS.md` (+ `.ko.md`).
+- **API Stability** section in README declaring the semver contract: stable
+  CLI commands/flags, JSON envelope shape, error codes (UCI-xxx), and
+  existing response field names. Backward-compatible additions in minor
+  versions only.
+- **Unity Compatibility** matrix in README.
 
 ### Changed
 
-- **`console --json` data shape** (**breaking**): `data` was a bare
-  `[]string`; now wrapped in `{"entries": [...], "count": N}` to match
-  every other tool's envelope convention (D1/B3).
-- **`profiler status --json` key names** (**breaking**): `firstFrame`,
-  `lastFrame`, `frameCount`, `isPlaying` renamed to snake_case
-  (`first_frame`, `last_frame`, `frame_count`, `is_playing`) to match
-  the project-wide convention.
-- **Connector version** bumped to 0.10.0 for the above breaking changes.
-- **Release checksums**: `release.yml` now generates `SHA256SUMS.txt`
-  alongside binaries. `install.sh` and `install.ps1` verify the checksum
-  after download (skip with `--no-checksum` / `-NoChecksum`).
+- **`console --json` data shape** (**breaking from pre-1.0**): `data` was a
+  bare `[]string`; now wrapped in `{"entries": [...], "count": N}` to match
+  every other tool's envelope convention.
+- **`profiler status --json` key names** (**breaking from pre-1.0**):
+  `firstFrame`, `lastFrame`, `frameCount`, `isPlaying` renamed to snake_case
+  (`first_frame`, `last_frame`, `frame_count`, `is_playing`) to match the
+  project-wide convention.
+- **Connector version** bumped to 0.10.0 for the above wire-format changes.
+- **Release artifacts**: `release.yml` generates `SHA256SUMS.txt` alongside
+  binaries. `install.sh` and `install.ps1` verify the checksum after download
+  (skip with `--no-checksum` / `-NoChecksum`).
 - **CI matrix**: `ci.yml` now runs on Ubuntu, macOS, and Windows.
+- **README slimmed** 1273 → 224 lines. Detailed command reference and custom
+  tools guide moved to `docs/` to reduce first-visit friction.
+- **`ManageAsset.cs`** split via partial class into `ManageAsset.cs` (queries
+  + inspect) and `ManageAsset.Mutations.cs` (create/move/delete/label).
+- **Pagination helper** extracted to `Core/Pagination.cs` — shared by
+  `ManageAsset` and `ManageGameObject` in place of duplicated `Clamp()` and
+  `has_more` logic.
+- **Error handling**: `log.go` and `completion.go` now return errors instead
+  of calling `os.Exit(1)` directly, so `root.go` handles exit consistently.
+- **Go toolchain**: `go.mod` aligned to `go 1.26.0` (matches CI).
 
 ### Security
 
-- **`udit update` checksum verification**: self-update now downloads
+- **`udit update` checksum verification**: self-update downloads
   `SHA256SUMS.txt` from the release and verifies the binary hash before
-  replacing the executable. Mismatch aborts the update. Older releases
-  without checksums proceed with a warning.
+  replacing the executable. Mismatch aborts the update and deletes the
+  downloaded file. Older releases without `SHA256SUMS.txt` proceed with a
+  warning (graceful fallback).
+- **`.gitattributes`** enforces LF line endings on Go sources so CI
+  `gofmt --diff` doesn't flag Windows CRLF checkouts.
 
 ## [0.10.0] - 2026-04-16
 
